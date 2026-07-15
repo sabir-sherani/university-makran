@@ -1,0 +1,29 @@
+{
+  "name": "university-website",
+  "version": "1.0.0",
+  "description": "University of Makran, Panjgur - Official Website",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "autoprefixer": "^10.4.16",
+    "axios": "^1.6.0",
+    "framer-motion": "^10.16.4",
+    "lucide-react": "^1.14.0",
+    "next": "^14.0.0",
+    "postcss": "^8.4.31",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-hook-form": "^7.48.0",
+    "react-icons": "^4.12.0",
+    "swiper": "^12.1.4",
+    "tailwindcss": "^3.3.0"
+  },
+  "devDependencies": {
+    "eslint": "^8.52.0",
+    "eslint-config-next": "^14.0.0"
+  }
+}

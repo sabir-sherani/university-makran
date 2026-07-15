@@ -1,0 +1,46 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  color: #333;
+}
+
+.admin-btn {
+  @apply px-4 py-2 rounded-lg font-semibold transition-all;
+}
+
+.admin-btn-primary {
+  @apply bg-primary text-white hover:opacity-90;
+}
+
+.admin-btn-danger {
+  @apply bg-red-600 text-white hover:bg-red-700;
+}
+
+.admin-input {
+  @apply w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-primary;
+}
+
+.admin-table {
+  @apply w-full border-collapse;
+}
+
+.admin-table th {
+  @apply bg-primary text-white px-4 py-3 text-left;
+}
+
+.admin-table td {
+  @apply px-4 py-3 border-b border-gray-200;
+}
+
+.admin-table tr:hover {
+  @apply bg-gray-50;
+}
