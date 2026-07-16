@@ -4,6 +4,7 @@ import axios from 'axios';
 
 const API      = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 const BASE_URL = API.replace('/api', '');
+const fileUrl = (u) => u?.startsWith('http') ? u : `${BASE_URL}${u}`;
 
 const inputCls = 'w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-200 focus:border-purple-500 transition-all';
 const labelCls = 'block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5';
@@ -502,7 +503,7 @@ export default function ExamPortal() {
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
                           {s.fileUrl
-                            ? <a href={`${BASE_URL}${s.fileUrl}`} target="_blank" rel="noreferrer"
+                            ? <a href={fileUrl(s.fileUrl)} target="_blank" rel="noreferrer"
                                 className="px-3 py-1.5 text-xs font-bold bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">View</a>
                             : <span className="px-3 py-1.5 text-xs font-medium bg-gray-50 text-gray-300 rounded-lg cursor-not-allowed" title="No file attached">No File</span>
                           }
@@ -591,7 +592,7 @@ export default function ExamPortal() {
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
                           {r.fileUrl
-                            ? <a href={`${BASE_URL}${r.fileUrl}`} target="_blank" rel="noreferrer"
+                            ? <a href={fileUrl(r.fileUrl)} target="_blank" rel="noreferrer"
                                 className="px-3 py-1.5 text-xs font-bold bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">View</a>
                             : <span className="px-3 py-1.5 text-xs font-medium bg-gray-50 text-gray-300 rounded-lg cursor-not-allowed" title="No file attached">No File</span>
                           }

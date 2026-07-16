@@ -13,14 +13,8 @@ const Result = require('../models/Result');
 const TeacherIdSlot = require('../models/TeacherIdSlot');
 const { verifyAdminToken } = require('../middleware/auth');
 
-const uploadDir = path.join(__dirname, '../public/uploads/portal');
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
-  filename: (req, file, cb) => cb(null, `${Date.now()}-${file.originalname}`),
-});
-const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
+const { createStorage } = require('../utils/cloudinary');
+const upload = multer({ storage: createStorage('portal/admin'), limits: { fileSize: 10 * 1024 * 1024 } });
 
 // POST /api/portal/admin/login
 router.post('/login', async (req, res) => {
@@ -316,7 +310,7 @@ router.post('/datesheets', verifyAdminToken, upload.single('file'), async (req, 
       title, examType, semester, department, program, session, timeSession: timeSession || undefined,
       uploadedBy: req.user.id,
       uploadedByRole: 'admin',
-      fileUrl: req.file ? `/uploads/portal/${req.file.filename}` : null,
+      fileUrl: req.file ? req.file.path : null,
       fileName: req.file ? req.file.originalname : null,
     });
     await datesheet.save();
@@ -339,7 +333,7 @@ router.patch('/datesheets/:id', verifyAdminToken, upload.single('file'), async (
     if (program   !== undefined)      ds.program     = program;
     if (session   !== undefined)      ds.session     = session;
     if (timeSession !== undefined)    ds.timeSession = timeSession || undefined;
-    if (req.file) { ds.fileUrl = `/uploads/portal/${req.file.filename}`; ds.fileName = req.file.originalname; }
+    if (req.file) { ds.fileUrl = req.file.path; ds.fileName = req.file.originalname; }
     await ds.save();
     res.json({ message: 'Date sheet updated.', datesheet: ds });
   } catch (error) {
@@ -414,7 +408,7 @@ router.post('/results', verifyAdminToken, upload.single('file'), async (req, res
       title, examType, semester, department, program, session, timeSession: timeSession || undefined,
       uploadedBy: req.user.id,
       uploadedByRole: 'admin',
-      fileUrl: req.file ? `/uploads/portal/${req.file.filename}` : null,
+      fileUrl: req.file ? req.file.path : null,
       fileName: req.file ? req.file.originalname : null,
       results: results ? JSON.parse(results) : [],
     });

@@ -1,29 +1,10 @@
 const express = require('express');
 const router  = express.Router();
 const multer  = require('multer');
-const path    = require('path');
-const fs      = require('fs');
 const Gallery = require('../models/Gallery');
+const { createStorage } = require('../utils/cloudinary');
 
-const uploadDir = path.join(__dirname, '../public/uploads/gallery');
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
-  filename:    (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `gallery-${Date.now()}-${Math.round(Math.random() * 1e6)}${ext}`);
-  },
-});
-
-const upload = multer({
-  storage,
-  limits: { fileSize: 1 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    if (/\.(jpg|jpeg|png|webp|gif)$/i.test(file.originalname)) cb(null, true);
-    else cb(new Error('Only image files are allowed'));
-  },
-});
+const upload = multer({ storage: createStorage('gallery', ['jpg', 'jpeg', 'png', 'webp', 'gif']) });
 
 // GET /api/gallery — all published items sorted by order then date
 router.get('/', async (req, res) => {
@@ -76,7 +57,7 @@ router.post('/bulk', handleBulkUpload, async (req, res) => {
       title:    '',
       description: '',
       category,
-      image:    `/uploads/gallery/${file.filename}`,
+      image:    file.path,
       order:    0,
       published,
     }));
@@ -96,7 +77,7 @@ router.post('/', handleUpload, async (req, res) => {
       title:       req.body.title       || '',
       description: req.body.description || '',
       category:    req.body.category    || 'General',
-      image:       `/uploads/gallery/${req.file.filename}`,
+      image:       req.file.path,
       order:       Number(req.body.order) || 0,
       published:   req.body.published !== 'false',
     }).save();
@@ -139,7 +120,7 @@ router.put('/:id', handleUpload, async (req, res) => {
       // delete old file
       const oldPath = path.join(__dirname, '../public', existing.image);
       if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
-      data.image = `/uploads/gallery/${req.file.filename}`;
+      data.image = req.file.path;
     }
 
     const updated = await Gallery.findByIdAndUpdate(req.params.id, data, { new: true });

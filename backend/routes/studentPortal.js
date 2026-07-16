@@ -156,15 +156,8 @@ router.get('/assignments', verifyStudentToken, async (req, res) => {
 
 // POST /api/portal/student/assignments/:id/submit
 const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
-const submissionUploadDir = path.join(__dirname, '../public/uploads/portal');
-if (!fs.existsSync(submissionUploadDir)) fs.mkdirSync(submissionUploadDir, { recursive: true });
-const submissionStorage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, submissionUploadDir),
-  filename: (req, file, cb) => cb(null, `${Date.now()}-${file.originalname}`),
-});
-const submissionUpload = multer({ storage: submissionStorage, limits: { fileSize: 10 * 1024 * 1024 } });
+const { createStorage } = require('../utils/cloudinary');
+const submissionUpload = multer({ storage: createStorage('portal/student'), limits: { fileSize: 10 * 1024 * 1024 } });
 
 router.post('/assignments/:id/submit', verifyStudentToken, submissionUpload.single('file'), async (req, res) => {
   try {
@@ -180,7 +173,7 @@ router.post('/assignments/:id/submit', verifyStudentToken, submissionUpload.sing
     if (existing) {
       if (note !== undefined) existing.note = note;
       if (req.file) {
-        existing.fileUrl = `/uploads/portal/${req.file.filename}`;
+        existing.fileUrl = req.file.path;
         existing.fileName = req.file.originalname;
       }
       await existing.save();
@@ -193,7 +186,7 @@ router.post('/assignments/:id/submit', verifyStudentToken, submissionUpload.sing
       registrationNo: student.registrationNo,
       studentName: student.fullName,
       note: note || '',
-      fileUrl: req.file ? `/uploads/portal/${req.file.filename}` : null,
+      fileUrl: req.file ? req.file.path : null,
       fileName: req.file ? req.file.originalname : null,
     });
     await submission.save();

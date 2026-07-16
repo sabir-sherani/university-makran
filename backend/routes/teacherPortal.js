@@ -12,14 +12,8 @@ const Assignment = require('../models/Assignment');
 const AssignmentSubmission = require('../models/AssignmentSubmission');
 const { verifyTeacherToken } = require('../middleware/auth');
 
-const uploadDir = path.join(__dirname, '../public/uploads/portal');
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
-  filename: (req, file, cb) => cb(null, `${Date.now()}-${file.originalname}`),
-});
-const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
+const { createStorage } = require('../utils/cloudinary');
+const upload = multer({ storage: createStorage('portal/teacher'), limits: { fileSize: 10 * 1024 * 1024 } });
 
 // POST /api/portal/teacher/register
 router.post('/register', async (req, res) => {
@@ -260,7 +254,7 @@ router.post('/results', verifyTeacherToken, upload.single('file'), async (req, r
       passingMarks: passingMarks ? Number(passingMarks) : undefined,
       uploadedBy: req.user.id,
       uploadedByRole: 'teacher',
-      fileUrl: req.file ? `/uploads/portal/${req.file.filename}` : null,
+      fileUrl: req.file ? req.file.path : null,
       fileName: req.file ? req.file.originalname : null,
       results: results ? JSON.parse(results) : [],
     });
@@ -298,7 +292,7 @@ router.patch('/results/:id', verifyTeacherToken, upload.single('file'), async (r
     if (passingMarks !== undefined) result.passingMarks = passingMarks === '' ? undefined : Number(passingMarks);
     if (results !== undefined) result.results = JSON.parse(results);
     if (req.file) {
-      result.fileUrl = `/uploads/portal/${req.file.filename}`;
+      result.fileUrl = req.file.path;
       result.fileName = req.file.originalname;
     }
 
@@ -342,7 +336,7 @@ router.post('/assignments', verifyTeacherToken, upload.single('file'), async (re
       totalMarks:     totalMarks ? Number(totalMarks) : 100,
       uploadedBy:     req.user.id,
       uploadedByRole: 'teacher',
-      fileUrl:  req.file ? `/uploads/portal/${req.file.filename}` : null,
+      fileUrl:  req.file ? req.file.path : null,
       fileName: req.file ? req.file.originalname : null,
     });
     await assignment.save();
@@ -384,7 +378,7 @@ router.patch('/assignments/:id', verifyTeacherToken, upload.single('file'), asyn
       assignment.academicSession = cls.academicSession || '';
     }
     if (req.file) {
-      assignment.fileUrl = `/uploads/portal/${req.file.filename}`;
+      assignment.fileUrl = req.file.path;
       assignment.fileName = req.file.originalname;
     }
     await assignment.save();

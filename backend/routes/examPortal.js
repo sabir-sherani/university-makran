@@ -12,13 +12,8 @@ const Result    = require('../models/Result');
 const { verifyExamToken } = require('../middleware/auth');
 const DegreeVerification = require('../models/DegreeVerification');
 
-const uploadDir = path.join(__dirname, '../public/uploads/portal');
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
-  filename:    (req, file, cb) => cb(null, `${Date.now()}-${file.originalname}`),
-});
-const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
+const { createStorage } = require('../utils/cloudinary');
+const upload = multer({ storage: createStorage('portal/exam'), limits: { fileSize: 10 * 1024 * 1024 } });
 
 // POST /api/portal/exam/login
 router.post('/login', async (req, res) => {
@@ -90,7 +85,7 @@ router.post('/datesheets', verifyExamToken, upload.single('file'), async (req, r
       title, department, program, semester, academicSession,
       timeSession: timeSession || undefined,
       isPublished: isPublished === 'true',
-      fileUrl: `/uploads/portal/${req.file.filename}`,
+      fileUrl: req.file.path,
       uploadedBy: req.user.id,
       uploaderRole: 'exam',
     });
@@ -145,7 +140,7 @@ router.post('/results', verifyExamToken, upload.single('file'), async (req, res)
       timeSession: timeSession || undefined,
       passingMarks: passingMarks || 40,
       isPublished: isPublished === 'true',
-      fileUrl: `/uploads/portal/${req.file.filename}`,
+      fileUrl: req.file.path,
       uploadedBy: req.user.id,
       uploaderRole: 'exam',
     });

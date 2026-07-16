@@ -8,6 +8,7 @@ import { useRouter } from 'next/router';
 
 const API = process.env.NEXT_PUBLIC_API_URL; // e.g. http://localhost:5000/api
 const BASE_URL = API ? API.replace(/\/api$/, '') : '';
+const fileUrl = (u) => u?.startsWith('http') ? u : `${BASE_URL}${u}`;
 
 
 
@@ -882,7 +883,7 @@ export default function StudentPortal() {
                         </div>
                         {ds.fileUrl && (
                           <a
-                            href={`${BASE_URL}${ds.fileUrl}`}
+                            href={fileUrl(ds.fileUrl)}
                             target="_blank"
                             rel="noreferrer"
                             className="btn btn-primary text-sm flex-shrink-0 ml-4"
@@ -925,7 +926,7 @@ export default function StudentPortal() {
                           </div>
                           {r.fileUrl && (
                             <a
-                              href={`${BASE_URL}${r.fileUrl}`}
+                              href={fileUrl(r.fileUrl)}
                               target="_blank"
                               rel="noreferrer"
                               className="btn btn-primary text-sm"
@@ -1199,7 +1200,7 @@ export default function StudentPortal() {
                             </div>
                             <div className="flex flex-col gap-2 flex-shrink-0">
                               {a.fileUrl && (
-                                <a href={`${BASE_URL}${a.fileUrl}`} target="_blank" rel="noreferrer"
+                                <a href={fileUrl(a.fileUrl)} target="_blank" rel="noreferrer"
                                   className="text-xs px-3 py-1.5 rounded-lg bg-primary text-white font-semibold hover:opacity-90 transition text-center">
                                   ⬇ Download
                                 </a>
@@ -1234,7 +1235,7 @@ export default function StudentPortal() {
                               <p className="font-semibold text-green-700">Your Submission</p>
                               {a.mySubmission.note && <p className="text-gray-600 text-xs italic">"{a.mySubmission.note}"</p>}
                               {a.mySubmission.fileUrl && (
-                                <a href={`${BASE_URL}${a.mySubmission.fileUrl}`} target="_blank" rel="noreferrer"
+                                <a href={fileUrl(a.mySubmission.fileUrl)} target="_blank" rel="noreferrer"
                                   className="inline-block text-xs text-primary font-semibold hover:underline">
                                   ⬇ {a.mySubmission.fileName}
                                 </a>

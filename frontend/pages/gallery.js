@@ -9,7 +9,7 @@ const API_URL  = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 const BASE_URL = API_URL.replace('/api', '');
 
 function imgSrc(item) {
-  return `${BASE_URL}${item.image}`;
+  return item.image?.startsWith("http") ? item.image : `${BASE_URL}${item.image}`;
 }
 
 export default function Gallery() {

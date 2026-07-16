@@ -9,7 +9,7 @@ const BASE_URL = API_URL.replace('/api', '');
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 function resolveLink(item) {
-  if (item.linkType === 'document' && item.document) return { href: `${BASE_URL}${item.document}`, external: true };
+  if (item.linkType === 'document' && item.document) return { href: item.document?.startsWith('http') ? item.document : `${BASE_URL}${item.document}`, external: true };
   if (item.linkType === 'internal' && item.linkUrl)  return { href: item.linkUrl, external: false };
   if (item.linkType === 'external' && item.linkUrl)  return { href: item.linkUrl, external: true };
   // No link, document, or meaningful URL → fall back to news page

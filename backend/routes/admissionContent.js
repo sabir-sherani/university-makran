@@ -7,25 +7,8 @@ const fs      = require('fs');
 const AdmissionNotice = require('../models/AdmissionNotice');
 
 // ── File upload setup ────────────────────────────────────────────────
-const uploadDir = path.join(__dirname, '../public/uploads');
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `adm-${Date.now()}-${Math.round(Math.random() * 1e6)}${ext}`);
-  },
-});
-
-const upload = multer({
-  storage,
-  limits: { fileSize: 10 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    if (/\.(pdf|jpg|jpeg|png|webp)$/i.test(file.originalname)) cb(null, true);
-    else cb(new Error('Only PDF and images are allowed'));
-  },
-});
+const { createStorage } = require('../utils/cloudinary');
+const upload = multer({ storage: createStorage('admission-content') });
 
 // ═══════════════════════════════════════════════════════════════════
 // NOTICES — CRUD
@@ -65,8 +48,8 @@ router.post('/notices', upload.fields([
       link:        req.body.link        || '',
       published:   req.body.published !== 'false',
     };
-    if (req.files?.image?.[0]) data.image = `/uploads/${req.files.image[0].filename}`;
-    if (req.files?.pdf?.[0])   data.pdf   = `/uploads/${req.files.pdf[0].filename}`;
+    if (req.files?.image?.[0]) data.image = req.files.image[0].path;
+    if (req.files?.pdf?.[0])   data.pdf   = req.files.pdf[0].path;
 
     const saved = await new AdmissionNotice(data).save();
     res.status(201).json(saved);
@@ -96,8 +79,8 @@ router.put('/notices/:id', upload.fields([
       image: existing.image,
       pdf:   existing.pdf,
     };
-    if (req.files?.image?.[0]) data.image = `/uploads/${req.files.image[0].filename}`;
-    if (req.files?.pdf?.[0])   data.pdf   = `/uploads/${req.files.pdf[0].filename}`;
+    if (req.files?.image?.[0]) data.image = req.files.image[0].path;
+    if (req.files?.pdf?.[0])   data.pdf   = req.files.pdf[0].path;
 
     const updated = await AdmissionNotice.findByIdAndUpdate(req.params.id, data, { new: true });
     res.json(updated);

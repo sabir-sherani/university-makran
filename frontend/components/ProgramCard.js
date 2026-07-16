@@ -11,7 +11,7 @@ const CAT_META = {
 function imgSrc(image) {
   if (!image) return null;
   if (image.startsWith('http')) return image;
-  return `${BASE_URL}${image}`;
+  return image?.startsWith("http") ? image : `${BASE_URL}${image}`;
 }
 
 export default function ProgramCard({ program }) {

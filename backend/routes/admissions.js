@@ -5,25 +5,8 @@ const path    = require('path');
 const fs      = require('fs');
 const Admission = require('../models/Admission');
 
-const uploadDir = path.join(__dirname, '../public/uploads');
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `applicant-${Date.now()}-${Math.round(Math.random() * 1e6)}${ext}`);
-  },
-});
-
-const upload = multer({
-  storage,
-  limits: { fileSize: 5 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    if (/\.(jpg|jpeg|png)$/i.test(file.originalname)) cb(null, true);
-    else cb(new Error('Only JPG, JPEG and PNG images are allowed'));
-  },
-});
+const { createStorage } = require('../utils/cloudinary');
+const upload = multer({ storage: createStorage('admissions', ['jpg', 'jpeg', 'png']) });
 
 // GET all applications
 router.get('/', async (req, res) => {
@@ -39,7 +22,7 @@ router.get('/', async (req, res) => {
 router.post('/apply', upload.single('profilePicture'), async (req, res) => {
   try {
     const data = { ...req.body };
-    if (req.file) data.profilePicture = `/uploads/${req.file.filename}`;
+    if (req.file) data.profilePicture = req.file.path;
     const saved = await new Admission(data).save();
     res.status(201).json(saved);
   } catch (error) {

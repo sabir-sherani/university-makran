@@ -1,26 +1,14 @@
 const express  = require('express');
 const router   = express.Router();
 const multer   = require('multer');
-const path     = require('path');
-const fs       = require('fs');
 const Program  = require('../models/Program');
 
 // ── Upload setup ─────────────────────────────────────────────────────────────
 
-const uploadDir = path.join(__dirname, '../public/uploads');
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
-  filename:    (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `prog-${Date.now()}-${Math.round(Math.random() * 1e6)}${ext}`);
-  },
-});
+const { createStorage } = require('../utils/cloudinary');
 
 const upload = multer({
-  storage,
-  limits: { fileSize: 200 * 1024 },
+  storage: createStorage('programs', ['jpg', 'jpeg', 'png', 'webp']),
   fileFilter: (req, file, cb) => {
     const allowedMimes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
     const allowedExts  = /\.(jpg|jpeg|png|webp)$/i;
@@ -50,7 +38,7 @@ function buildData(body, file, existing = {}) {
   if (body.level            !== undefined) data.level            = body.level;
 
   if (file) {
-    data.image = `/uploads/${file.filename}`;
+    data.image = file.path;
   } else if (body.existingImage !== undefined) {
     data.image = body.existingImage;
   }

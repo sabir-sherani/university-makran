@@ -8,6 +8,7 @@ import { useRouter } from 'next/router';
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 const BASE_URL = API ? API.replace(/\/api$/, '') : '';
+const fileUrl = (u) => u?.startsWith('http') ? u : `${BASE_URL}${u}`;
 
 
 const inputCls = 'w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-[#FA7902] text-sm';
@@ -2046,7 +2047,7 @@ export default function TeacherPortal() {
                                       Edit
                                     </button>
                                     {r.fileUrl && (
-                                      <a href={`${BASE_URL}${r.fileUrl}`} target="_blank" rel="noreferrer"
+                                      <a href={fileUrl(r.fileUrl)} target="_blank" rel="noreferrer"
                                         className="bg-[#FA7902] text-white px-4 py-2 rounded-lg text-sm font-semibold hover:opacity-90">
                                         Download
                                       </a>
@@ -2194,7 +2195,7 @@ export default function TeacherPortal() {
                               ✏️ Edit
                             </button>
                             {a.fileUrl && (
-                              <a href={`${BASE_URL}${a.fileUrl}`} target="_blank" rel="noreferrer"
+                              <a href={fileUrl(a.fileUrl)} target="_blank" rel="noreferrer"
                                 className="text-xs px-3 py-1.5 rounded-lg bg-gray-100 text-gray-700 font-semibold hover:bg-gray-200 transition text-center">
                                 ⬇ File
                               </a>
@@ -2379,7 +2380,7 @@ export default function TeacherPortal() {
                                   </div>
                                   <div className="flex flex-col gap-1.5 flex-shrink-0">
                                     {s.fileUrl && (
-                                      <a href={`${BASE_URL}${s.fileUrl}`} target="_blank" rel="noreferrer"
+                                      <a href={fileUrl(s.fileUrl)} target="_blank" rel="noreferrer"
                                         className="bg-gray-100 text-gray-700 text-xs px-3 py-1.5 rounded-lg font-semibold hover:bg-gray-200 text-center">
                                         ⬇ File
                                       </a>

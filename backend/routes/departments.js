@@ -5,25 +5,8 @@ const path    = require('path');
 const fs      = require('fs');
 const Department = require('../models/Department');
 
-const uploadDir = path.join(__dirname, '../public/uploads');
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
-  filename:    (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `dept-${Date.now()}-${Math.round(Math.random() * 1e6)}${ext}`);
-  },
-});
-
-const upload = multer({
-  storage,
-  limits: { fileSize: 3 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    if (/\.(jpg|jpeg|png|webp)$/i.test(file.originalname)) cb(null, true);
-    else cb(new Error('Only jpg/jpeg/png/webp images are allowed'));
-  },
-});
+const { createStorage } = require('../utils/cloudinary');
+const upload = multer({ storage: createStorage('departments', ['jpg', 'jpeg', 'png', 'webp']) });
 
 const deptUpload = upload.fields([
   { name: 'bannerImage', maxCount: 1 },
@@ -48,7 +31,7 @@ function buildData(body, files, existing = {}) {
   data.slug = body.slug || (body.name ? slugify(body.name) : existing.slug);
 
   if (files?.bannerImage)
-    data.bannerImage = `/uploads/${files.bannerImage[0].filename}`;
+    data.bannerImage = files.bannerImage[0].path;
 
   // Tab 1
   if (body.aboutHeading     !== undefined) data.aboutHeading     = body.aboutHeading;
@@ -56,7 +39,7 @@ function buildData(body, files, existing = {}) {
 
   // Tab 2 — HOD
   const hodPhoto = files?.hodPhoto
-    ? `/uploads/${files.hodPhoto[0].filename}`
+    ? files.hodPhoto[0].path
     : (body.existingHodPhoto || existing.hod?.photo || '');
 
   data.hod = {
@@ -79,7 +62,7 @@ function buildData(body, files, existing = {}) {
       email:     m.email     || '',
       phone:     m.phone     || '',
       bio:       m.bio       || '',
-      photo:     f ? `/uploads/${f[0].filename}` : (m.existingPhoto || m.photo || ''),
+      photo:     f ? f[0].path : (m.existingPhoto || m.photo || ''),
     };
   });
 
@@ -109,7 +92,7 @@ function buildData(body, files, existing = {}) {
     images: facilityImgs.map((img, i) => {
       const f = files?.[`facilityImg_${i}`];
       return {
-        image:    f ? `/uploads/${f[0].filename}` : (img.existingUrl || ''),
+        image:    f ? f[0].path : (img.existingUrl || ''),
         subtitle: img.subtitle || '',
       };
     }),
@@ -123,7 +106,7 @@ function buildData(body, files, existing = {}) {
     images: engagementImgs.map((img, i) => {
       const f = files?.[`engagementImg_${i}`];
       return {
-        image:    f ? `/uploads/${f[0].filename}` : (img.existingUrl || ''),
+        image:    f ? f[0].path : (img.existingUrl || ''),
         subtitle: img.subtitle || '',
       };
     }),

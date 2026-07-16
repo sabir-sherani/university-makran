@@ -10,7 +10,7 @@ const BASE_URL = API_URL.replace('/api', '');
 function imgUrl(p) {
   if (!p) return null;
   if (p.startsWith('http')) return p;
-  return `${BASE_URL}${p}`;
+  return p?.startsWith("http") ? p : `${BASE_URL}${p}`;
 }
 
 export async function getServerSideProps({ params }) {

@@ -9,7 +9,7 @@ const BASE_URL = API_URL.replace('/api', '');
 
 function getAction(item) {
   if (item.linkType === 'document' && item.document)
-    return { href: `${BASE_URL}${item.document}`, label: 'Download PDF', icon: '⬇', external: true };
+    return { href: item.document?.startsWith('http') ? item.document : `${BASE_URL}${item.document}`, label: 'Download PDF', icon: '⬇', external: true };
   if (item.linkType === 'external' && item.linkUrl)
     return { href: item.linkUrl, label: 'Visit Link', icon: '↗', external: true };
   if (item.linkType === 'internal' && item.linkUrl)
@@ -18,7 +18,7 @@ function getAction(item) {
 }
 
 function resolveLink(item) {
-  if (item.linkType === 'document' && item.document) return { href: `${BASE_URL}${item.document}`, external: true };
+  if (item.linkType === 'document' && item.document) return { href: item.document?.startsWith('http') ? item.document : `${BASE_URL}${item.document}`, external: true };
   if (item.linkType === 'internal' && item.linkUrl)  return { href: item.linkUrl, external: false };
   return { href: item.linkUrl || '#', external: true };
 }
@@ -124,7 +124,7 @@ function DescriptionModal({ item, onClose }) {
         {/* Cover image */}
         {item.image && (
           <div style={{ height: 200, overflow: 'hidden', flexShrink: 0 }}>
-            <img src={`${BASE_URL}${item.image}`} alt={item.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            <img src={item.image?.startsWith('http') ? item.image : `${BASE_URL}${item.image}`} alt={item.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           </div>
         )}
 
@@ -258,8 +258,8 @@ export default function NewsPage() {
                       {/* Image */}
                       {item.image ? (
                         <div style={{ flex: '0 0 340px', minHeight: 240, position: 'relative', cursor: 'zoom-in', overflow: 'hidden' }}
-                          onClick={() => setLightbox({ src: `${BASE_URL}${item.image}`, alt: item.title })}>
-                          <img src={`${BASE_URL}${item.image}`} alt={item.title}
+                          onClick={() => setLightbox({ src: item.image?.startsWith('http') ? item.image : `${BASE_URL}${item.image}`, alt: item.title })}>
+                          <img src={item.image?.startsWith('http') ? item.image : `${BASE_URL}${item.image}`} alt={item.title}
                             style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.5s' }}
                             onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.05)'}
                             onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'} />
@@ -336,8 +336,8 @@ export default function NewsPage() {
                         {/* Top: image or date banner */}
                         {item.image ? (
                           <div style={{ height: 180, position: 'relative', overflow: 'hidden', cursor: 'zoom-in', flexShrink: 0 }}
-                            onClick={() => setLightbox({ src: `${BASE_URL}${item.image}`, alt: item.title })}>
-                            <img src={`${BASE_URL}${item.image}`} alt={item.title}
+                            onClick={() => setLightbox({ src: item.image?.startsWith('http') ? item.image : `${BASE_URL}${item.image}`, alt: item.title })}>
+                            <img src={item.image?.startsWith('http') ? item.image : `${BASE_URL}${item.image}`} alt={item.title}
                               style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.4s' }}
                               onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.07)'}
                               onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'} />

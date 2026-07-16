@@ -5,25 +5,8 @@ const path = require('path');
 const fs = require('fs');
 const AdministrationDept = require('../models/AdministrationDept');
 
-const uploadDir = path.join(__dirname, '../public/uploads');
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `admin-${Date.now()}-${Math.round(Math.random() * 1e6)}${ext}`);
-  },
-});
-
-const upload = multer({
-  storage,
-  limits: { fileSize: 2 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    if (/\.(jpg|jpeg|png|webp)$/i.test(file.originalname)) cb(null, true);
-    else cb(new Error('Only jpg/jpeg/png/webp images are allowed'));
-  },
-});
+const { createStorage } = require('../utils/cloudinary');
+const upload = multer({ storage: createStorage('administration', ['jpg', 'jpeg', 'png', 'webp']) });
 
 function slugify(name) {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
@@ -77,7 +60,7 @@ router.post('/', adminUpload, async (req, res) => {
     const slug = slugify(name);
 
     const hodImage = req.files?.hodImage?.[0]
-      ? `/uploads/${req.files.hodImage[0].filename}`
+      ? req.files.hodImage[0].path
       : '';
 
     const hod = { image: hodImage, name: hodName || '', position: hodPosition || '', specialization: hodSpecialization || '', about: hodAbout || '', message: hodMessage || '' };
@@ -93,7 +76,7 @@ router.post('/', adminUpload, async (req, res) => {
         phone:     member.phone || '',
         bio:       member.bio || '',
         image: req.files?.[`staffImage_${i}`]?.[0]
-          ? `/uploads/${req.files[`staffImage_${i}`][0].filename}`
+          ? req.files[`staffImage_${i}`][0].path
           : member.image || '',
       }));
     }
@@ -115,7 +98,7 @@ router.put('/:id', adminUpload, async (req, res) => {
     const { name, about, hodName, hodPosition, hodSpecialization, hodAbout, hodMessage, staffJson, order } = req.body;
 
     const hodImage = req.files?.hodImage?.[0]
-      ? `/uploads/${req.files.hodImage[0].filename}`
+      ? req.files.hodImage[0].path
       : existing.hod?.image || '';
 
     const hod = {
@@ -138,7 +121,7 @@ router.put('/:id', adminUpload, async (req, res) => {
         phone:     member.phone || '',
         bio:       member.bio || '',
         image: req.files?.[`staffImage_${i}`]?.[0]
-          ? `/uploads/${req.files[`staffImage_${i}`][0].filename}`
+          ? req.files[`staffImage_${i}`][0].path
           : member.image || '',
       }));
     }
