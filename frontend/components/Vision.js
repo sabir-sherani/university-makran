@@ -21,13 +21,13 @@ export default function Vision() {
 
           {/* ── Text (right on desktop) ─── */}
           <div className="order-1 lg:order-2">
-            <span className="font-semibold uppercase tracking-widest text-sm" style={{ color: '#041476' }}>
+            <span className="font-semibold uppercase tracking-widest text-sm" style={{ color: '#FA7902' }}>
               Our Future
             </span>
             <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold mt-2 mb-4 leading-tight" style={{ color: '#041476' }}>
               Our Vision
             </h2>
-            <div className="w-14 h-1 rounded-full mb-7" style={{ background: '#041476' }} />
+            <div className="w-14 h-1 rounded-full mb-7" style={{ background: '#FA7902' }} />
 
             <div className="space-y-5 text-gray-600 leading-relaxed text-base">
               <p className="flex gap-3">
