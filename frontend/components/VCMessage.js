@@ -78,7 +78,7 @@ export default function VCMessage() {
               >
                 <Image
                   src="/sadaat.jpeg"
-                  alt="Dr. Mir Sadaat Baloch — Vice Chancellor, University of Makran"
+                  alt="Prof. Dr. Mir Sadaat Baloch — Vice Chancellor, University of Makran"
                   fill
                   className="object-cover object-top"
                   sizes="260px"
@@ -87,7 +87,7 @@ export default function VCMessage() {
               </div>
             </div>
 
-            <h3 className="text-lg font-bold mb-1" style={{ color: '#041476' }}>Dr. Mir Sadaat Baloch</h3>
+            <h3 className="text-lg font-bold mb-1" style={{ color: '#041476' }}>Prof. Dr. Mir Sadaat Baloch</h3>
             <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: '#041476' }}>Vice Chancellor</p>
             <p className="text-xs text-gray-400 mt-1">University of Makran, Panjgur</p>
             <div className="w-10 h-0.5 mx-auto mt-4 rounded-full" style={{ background: '#041476', opacity: 0.25 }} />

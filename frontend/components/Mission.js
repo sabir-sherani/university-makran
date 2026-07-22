@@ -16,30 +16,15 @@ export default function Mission() {
 
             <div className="space-y-4 text-gray-600 leading-relaxed text-base">
               <p>
-                The University of Makran, Panjgur (UoMP) is committed to offering broad, balanced, and
-                high-quality academic programs at undergraduate, graduate, and postgraduate levels —
-                programs that are mutually reinforcing and built on a foundation of creative, rigorous
-                instruction.
+                ✤	To offer broad and balanced academic programs that are mutually reinforcing and emphasize high quality and creative instruction at the undergraduate, graduate, professional and postgraduate levels.
               </p>
               <p>
-                We uphold the highest standards of excellence across all disciplines, ensuring every
-                graduate leaves with the knowledge, skills, and ethical values needed to contribute
-                meaningfully to society. Our dedicated faculty nurture independent thinking and
-                intellectual growth, preparing students for both professional success and responsible
-                citizenship.
+                ✤	To maintain a level of excellence and standards in all programs.
               </p>
               <p>
-                At UoMP, education is a force for social transformation. We are committed to making
-                quality higher education accessible to the youth of the Makran region — a community of
-                extraordinary resilience and immense, yet largely untapped, potential. Through programs in
-                science, technology, humanities, and social work, we create lasting pathways of opportunity
-                for those who have long deserved access to world-class learning.
+                ✤	To strengthen cultural understanding through opportunities to study languages, cultures, science and information technology.
               </p>
-              <p>
-                We also foster cultural understanding through engagement with languages, sciences, and
-                modern information technology — equipping students to thrive in an interconnected,
-                ever-evolving global society.
-              </p>
+             
             </div>
           </div>
 
