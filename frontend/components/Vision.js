@@ -29,27 +29,22 @@ export default function Vision() {
             </h2>
             <div className="w-14 h-1 rounded-full mb-7" style={{ background: '#041476' }} />
 
-            <div className="space-y-4 text-gray-600 leading-relaxed text-base">
-              <p>
-                University of Makran, Panjgur was established in 2020 by an act of the provincial
-                assembly with a clear vision of providing necessary human resources in the country.
-                Since then, Makran University has been committed to promoting the cause of education
-                and professionalism in one of the least developed regions of the country.
+            <div className="space-y-5 text-gray-600 leading-relaxed text-base">
+              <p className="flex gap-3">
+                <span className="mt-1 shrink-0 text-lg" style={{ color: '#041476' }}>✤</span>
+                <span>Offering quality education and research, nurturing the human intellect, and providing a vibrant learning environment through innovation and academic excellence which make a positive impact on the society.</span>
               </p>
-              <p>
-                We envision becoming a leading institution of higher learning in Balochistan —
-                recognized for academic distinction and acknowledged for its contributions to
-                developing skilled, professional graduates who serve the nation.
+              <p className="flex gap-3">
+                <span className="mt-1 shrink-0 text-lg" style={{ color: '#041476' }}>✤</span>
+                <span>Becoming a leading institution for research and innovation in Balochistan, contributing meaningfully to the national knowledge economy and producing graduates who drive sustainable development.</span>
               </p>
-              <p>
-                Central to our vision is the development of Makran&apos;s human capital. UoMP is dedicated
-                to building a generation of leaders, innovators, and professionals who will drive the
-                progress of this region for decades to come — honoring the rich cultural heritage of
-                Makran while embracing the opportunities of a modern, interconnected world.
+              <p className="flex gap-3">
+                <span className="mt-1 shrink-0 text-lg" style={{ color: '#041476' }}>✤</span>
+                <span>Building a globally competitive academic environment rooted in regional values — one that empowers the youth of Makran to realise their full potential and serve as agents of positive change.</span>
               </p>
-              <p>
-                Our vision is to be not just a university — but a lasting force for education,
-                professionalism, and meaningful progress in the lives of the people we serve.
+              <p className="flex gap-3">
+                <span className="mt-1 shrink-0 text-lg" style={{ color: '#041476' }}>✤</span>
+                <span>Establishing strong national and international partnerships that open doors for faculty, researchers, and students to collaborate, exchange knowledge, and contribute to the global academic community.</span>
               </p>
             </div>
           </div>

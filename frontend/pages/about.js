@@ -4,6 +4,7 @@ import Header from '../components/Header';
 import Footer from '../components/Footer';
 import Mission from '../components/Mission';
 import Vision from '../components/Vision';
+import GoalsValues from '../components/GoalsValues';
 import GovernorMessage from '../components/GovernorMessage';
 import VCMessage from '../components/VCMessage';
 import { Images } from 'lucide-react';
@@ -65,6 +66,7 @@ export default function About() {
       {/* ── SECTIONS ───────────────────────────────────── */}
       <Mission />
       <Vision />
+      <GoalsValues />
       <GovernorMessage />
       <VCMessage />
 
