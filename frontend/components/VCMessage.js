@@ -1,15 +1,15 @@
 import Image from 'next/image';
 
 const message = [
-  `I am delighted to welcome you to the University of Makran, Panjgur — established in 2020 by an act of the provincial assembly with a clear vision of providing necessary human resources for the country.`,
+  `I am delighted to welcome you to the University of Mekran, Punjgur. It is the newest public sector university in province of Balochistan offering studies in the fields of Business Management, Computer Science and other allied sciences and humanities.`,
 
-  `Since our founding, Makran University has been committed to promoting the cause of education and professionalism in one of the least developed regions of the country. We offer programs in Computer Science, Business Management, and a growing range of disciplines across the sciences and humanities, all designed to equip students with the knowledge, skills, and confidence to succeed in an ever-changing world.`,
+  `We, at the University of Mekran, are proud of our newly established teaching and research endeavours upon which we wish to build our national and international reputation. We are extremely proud of our unique programmes. We hope that they will enable the masses of the area to realise your educational dreams with a special and highly memorable sense. We believe that your period at our university will be remarkable.`,
 
-  `At UoMP, we are proud of what we have accomplished in a short time and remain deeply committed to building on this foundation. We strive to foster a culture of academic excellence, critical thinking, and innovation — one that will earn this university a distinguished reputation at both national and international levels.`,
+  `We encourage you to strike a healthy balance between your academic activities and your personal life as this is very important for all of us. Our goal as a University is to educate you as a whole person and as an individual while acknowledging that some essential lessons you will learn, will take place inside and outside the lecture rooms, the computer laboratory, and the library.`,
 
-  `We are committed not only to your academic success, but also to your holistic development as an individual. University life is rich with opportunity — for leadership, collaboration, and meaningful discovery. We encourage every student to embrace a healthy balance between academic engagement and personal growth.`,
+  `I assure that the UoMP also teaches by means of all learning. We wish to expand your knowledge within a safe and exciting educational environment at all times.`,
 
-  `To our students: you are the heart of this institution. Your curiosity and your dreams are what drive everything we do. Your future begins here — and we are truly honored to walk this journey with you.`,
+  `Dear Students; Your future starts here. Enjoy this new and exciting chapter of your life, get involved with your studies, the wider student experiences of new learnings, co and extra-curricular activities and in the wider community so that you not only develop your subject knowledge but also prepare yourself for wherever your career takes you. Be open to new experiences and learning and in a world where nothing stays the same, be prepared to change, evolve, succeed, and have confidence in your ability to make a difference.`,
 ];
 
 export default function VCMessage() {
