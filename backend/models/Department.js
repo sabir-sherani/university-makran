@@ -95,6 +95,7 @@ const DepartmentSchema = new mongoose.Schema({
   description: String,
   head:        String,
   facilities:  [String],
+  deletedAt:   { type: Date, default: null },
 }, { timestamps: true });
 
 DepartmentSchema.index({ slug: 1 }, { unique: true, sparse: true });

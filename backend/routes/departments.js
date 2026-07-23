@@ -115,12 +115,24 @@ function buildData(body, files, existing = {}) {
   return data;
 }
 
-// GET /api/departments — lightweight list for header + listing page
+// GET /api/departments — lightweight list (active only)
 router.get('/', async (req, res) => {
   try {
-    const depts = await Department.find()
+    const depts = await Department.find({ deletedAt: null })
       .select('name slug bannerImage hod description')
       .sort('name');
+    res.json(depts);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// GET /api/departments/trash — soft-deleted items
+router.get('/trash', async (req, res) => {
+  try {
+    const depts = await Department.find({ deletedAt: { $ne: null } })
+      .select('name slug bannerImage deletedAt')
+      .sort({ deletedAt: -1 });
     res.json(depts);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -174,11 +186,31 @@ router.put('/:id', deptUpload, async (req, res) => {
   }
 });
 
-// DELETE /api/departments/:id
-router.delete('/:id', async (req, res) => {
+// PATCH /api/departments/:id/restore
+router.patch('/:id/restore', async (req, res) => {
+  try {
+    await Department.findByIdAndUpdate(req.params.id, { deletedAt: null });
+    res.json({ message: 'Department restored' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// DELETE /api/departments/:id/permanent
+router.delete('/:id/permanent', async (req, res) => {
   try {
     await Department.findByIdAndDelete(req.params.id);
-    res.json({ message: 'Department deleted' });
+    res.json({ message: 'Department permanently deleted' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// DELETE /api/departments/:id — soft delete
+router.delete('/:id', async (req, res) => {
+  try {
+    await Department.findByIdAndUpdate(req.params.id, { deletedAt: new Date() });
+    res.json({ message: 'Department moved to trash' });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

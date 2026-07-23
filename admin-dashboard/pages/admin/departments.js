@@ -3,7 +3,9 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import AdminHeader from '../../components/AdminHeader';
+import RecycleBinPanel from '../../components/RecycleBinPanel';
 import axios from 'axios';
+import { LuTrash2 } from 'react-icons/lu';
 
 const API  = process.env.NEXT_PUBLIC_API_URL;
 const BASE = API ? API.replace('/api', '') : 'http://localhost:5000';
@@ -14,9 +16,44 @@ export default function DepartmentsList() {
   const [newName, setNewName]         = useState('');
   const [creating, setCreating]       = useState(false);
   const [msg, setMsg]                 = useState('');
+  const [trashItems, setTrashItems]   = useState([]);
+  const [trashLoading, setTrashLoading] = useState(false);
+  const [showTrash, setShowTrash]     = useState(false);
   const router = useRouter();
 
-  useEffect(() => { fetchDepartments(); }, []);
+  useEffect(() => { fetchDepartments(); fetchTrash(); }, []);
+
+  async function fetchTrash() {
+    setTrashLoading(true);
+    try {
+      const res = await axios.get(`${API}/departments/trash`);
+      setTrashItems(res.data || []);
+    } catch {}
+    setTrashLoading(false);
+  }
+
+  async function handleRestore(id) {
+    try {
+      await axios.patch(`${API}/departments/${id}/restore`);
+      fetchDepartments(); fetchTrash();
+    } catch { alert('Error restoring department.'); }
+  }
+
+  async function handlePermanentDelete(id) {
+    if (!confirm('Permanently delete this department? This cannot be undone.')) return;
+    try {
+      await axios.delete(`${API}/departments/${id}/permanent`);
+      fetchTrash();
+    } catch { alert('Error deleting department.'); }
+  }
+
+  async function handleEmptyTrash() {
+    if (!confirm('Permanently delete ALL trashed departments? This cannot be undone.')) return;
+    try {
+      await Promise.all(trashItems.map(d => axios.delete(`${API}/departments/${d._id}/permanent`)));
+      fetchTrash();
+    } catch { alert('Error emptying trash.'); }
+  }
 
   async function fetchDepartments() {
     try {
@@ -43,10 +80,10 @@ export default function DepartmentsList() {
   }
 
   async function handleDelete(id, name) {
-    if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
+    if (!confirm(`Move "${name}" to the recycle bin?`)) return;
     try {
       await axios.delete(`${API}/departments/${id}`);
-      fetchDepartments();
+      fetchDepartments(); fetchTrash();
     } catch {
       alert('Error deleting department.');
     }
@@ -57,8 +94,32 @@ export default function DepartmentsList() {
       <Head><title>Departments — Admin Dashboard</title></Head>
       <AdminHeader />
 
+      <RecycleBinPanel
+        open={showTrash}
+        onClose={() => setShowTrash(false)}
+        items={trashItems}
+        loading={trashLoading}
+        onRestore={handleRestore}
+        onPermanentDelete={handlePermanentDelete}
+        onEmptyTrash={handleEmptyTrash}
+        label="department"
+      />
+
       <div className="ml-0 lg:ml-56 p-8">
-        <h2 className="text-3xl font-bold text-primary mb-8">Manage Departments</h2>
+        <div className="flex items-center justify-between mb-8">
+          <h2 className="text-3xl font-bold text-primary">Manage Departments</h2>
+          <button
+            onClick={() => setShowTrash(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl border text-sm font-semibold transition-colors"
+            style={{ borderColor: trashItems.length ? '#fca5a5' : '#e5e7eb', color: trashItems.length ? '#dc2626' : '#6b7280', background: trashItems.length ? '#fef2f2' : '#f9fafb' }}
+          >
+            <LuTrash2 size={15} />
+            Recycle Bin
+            {trashItems.length > 0 && (
+              <span className="ml-0.5 px-1.5 py-0.5 rounded-full text-xs font-bold text-white bg-red-500">{trashItems.length}</span>
+            )}
+          </button>
+        </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
 

@@ -26,6 +26,7 @@ const AdministrationDeptSchema = new mongoose.Schema({
   hod: { type: HodSchema, default: {} },
   staff: { type: [StaffMemberSchema], default: [] },
   order: { type: Number, default: 0 },
+  deletedAt: { type: Date, default: null },
 }, { timestamps: true });
 
 AdministrationDeptSchema.index({ slug: 1 }, { unique: true, sparse: true });

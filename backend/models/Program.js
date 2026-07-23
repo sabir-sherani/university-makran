@@ -15,6 +15,7 @@ const ProgramSchema = new mongoose.Schema({
   level:              { type: String, enum: ['Undergraduate', 'Postgraduate'], default: 'Undergraduate' },
   department:         { type: mongoose.Schema.Types.ObjectId, ref: 'Department' },
   departmentId:       mongoose.Schema.Types.ObjectId,
+  deletedAt:          { type: Date, default: null },
 }, { timestamps: true });
 
 module.exports = mongoose.model('Program', ProgramSchema);

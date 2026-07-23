@@ -18,12 +18,24 @@ const adminUpload = upload.fields([
   ...Array.from({ length: 20 }, (_, i) => ({ name: `staffImage_${i}`, maxCount: 1 })),
 ]);
 
-// GET /api/admin-depts — list all (lightweight for header/listing)
+// GET /api/admin-depts — list all active (lightweight)
 router.get('/', async (req, res) => {
   try {
-    const depts = await AdministrationDept.find()
+    const depts = await AdministrationDept.find({ deletedAt: null })
       .select('name slug about hod order')
       .sort({ order: 1, name: 1 });
+    res.json(depts);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// GET /api/admin-depts/trash — soft-deleted items
+router.get('/trash', async (req, res) => {
+  try {
+    const depts = await AdministrationDept.find({ deletedAt: { $ne: null } })
+      .select('name slug hod order deletedAt')
+      .sort({ deletedAt: -1 });
     res.json(depts);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -142,11 +154,31 @@ router.put('/:id', adminUpload, async (req, res) => {
   }
 });
 
-// DELETE /api/admin-depts/:id
-router.delete('/:id', async (req, res) => {
+// PATCH /api/admin-depts/:id/restore — restore from trash
+router.patch('/:id/restore', async (req, res) => {
+  try {
+    await AdministrationDept.findByIdAndUpdate(req.params.id, { deletedAt: null });
+    res.json({ message: 'Department restored' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// DELETE /api/admin-depts/:id/permanent — hard delete
+router.delete('/:id/permanent', async (req, res) => {
   try {
     await AdministrationDept.findByIdAndDelete(req.params.id);
-    res.json({ message: 'Department deleted' });
+    res.json({ message: 'Department permanently deleted' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// DELETE /api/admin-depts/:id — soft delete (move to trash)
+router.delete('/:id', async (req, res) => {
+  try {
+    await AdministrationDept.findByIdAndUpdate(req.params.id, { deletedAt: new Date() });
+    res.json({ message: 'Department moved to trash' });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

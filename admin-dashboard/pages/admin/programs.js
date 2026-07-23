@@ -2,6 +2,7 @@
 import Head from 'next/head';
 import Image from 'next/image';
 import AdminHeader from '../../components/AdminHeader';
+import RecycleBinPanel from '../../components/RecycleBinPanel';
 import axios from 'axios';
 import {
   LuBookOpen, LuFlaskConical, LuPalette, LuUpload, LuX,
@@ -40,9 +41,44 @@ export default function Programs() {
   const [errors, setErrors]           = useState({});
   const [flash, setFlash]             = useState({ text: '', ok: true });
   const [filterCat, setFilterCat]     = useState('all');
+  const [trashItems, setTrashItems]   = useState([]);
+  const [trashLoading, setTrashLoading] = useState(false);
+  const [showTrash, setShowTrash]     = useState(false);
   const fileRef = useRef(null);
 
-  useEffect(() => { fetchPrograms(); }, []);
+  useEffect(() => { fetchPrograms(); fetchTrash(); }, []);
+
+  async function fetchTrash() {
+    setTrashLoading(true);
+    try {
+      const res = await axios.get(`${API}/programs/trash`);
+      setTrashItems(res.data || []);
+    } catch { setTrashItems([]); }
+    setTrashLoading(false);
+  }
+
+  async function handleRestore(id) {
+    try {
+      await axios.patch(`${API}/programs/${id}/restore`);
+      fetchPrograms(); fetchTrash();
+    } catch { showFlash('Error restoring program.', false); }
+  }
+
+  async function handlePermanentDelete(id) {
+    if (!confirm('Permanently delete this program? This cannot be undone.')) return;
+    try {
+      await axios.delete(`${API}/programs/${id}/permanent`);
+      fetchTrash();
+    } catch { showFlash('Error deleting program.', false); }
+  }
+
+  async function handleEmptyTrash() {
+    if (!confirm('Permanently delete ALL trashed programs? This cannot be undone.')) return;
+    try {
+      await Promise.all(trashItems.map(p => axios.delete(`${API}/programs/${p._id}/permanent`)));
+      fetchTrash();
+    } catch { showFlash('Error emptying trash.', false); }
+  }
 
   async function fetchPrograms() {
     setLoading(true);
@@ -147,11 +183,11 @@ export default function Programs() {
   }
 
   async function handleDelete(id) {
-    if (!confirm('Delete this program? This cannot be undone.')) return;
+    if (!confirm('Move this program to the recycle bin?')) return;
     try {
       await axios.delete(`${API}/programs/${id}`);
-      showFlash('Program deleted.');
-      fetchPrograms();
+      showFlash('Program moved to recycle bin.');
+      fetchPrograms(); fetchTrash();
     } catch {
       showFlash('Error deleting program.', false);
     }
@@ -164,14 +200,38 @@ export default function Programs() {
       <Head><title>Manage Programs — Admin Dashboard</title></Head>
       <AdminHeader />
 
+      <RecycleBinPanel
+        open={showTrash}
+        onClose={() => setShowTrash(false)}
+        items={trashItems}
+        loading={trashLoading}
+        onRestore={handleRestore}
+        onPermanentDelete={handlePermanentDelete}
+        onEmptyTrash={handleEmptyTrash}
+        label="program"
+      />
+
       <div className="ml-0 lg:ml-56 min-h-screen p-6 lg:p-8" style={{ background: '#F1F5FF' }}>
 
         {/* Page header */}
-        <div className="mb-8">
-          <h2 className="text-3xl font-bold flex items-center gap-3" style={{ color: '#041476' }}>
-            <LuBookOpen size={28} /> Manage Programs
-          </h2>
-          <p className="text-gray-500 text-sm mt-1">Create and manage Science &amp; Arts degree programs</p>
+        <div className="flex items-start justify-between mb-8 gap-4">
+          <div>
+            <h2 className="text-3xl font-bold flex items-center gap-3" style={{ color: '#041476' }}>
+              <LuBookOpen size={28} /> Manage Programs
+            </h2>
+            <p className="text-gray-500 text-sm mt-1">Create and manage Science &amp; Arts degree programs</p>
+          </div>
+          <button
+            onClick={() => setShowTrash(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl border text-sm font-semibold transition-colors shrink-0"
+            style={{ borderColor: trashItems.length ? '#fca5a5' : '#e5e7eb', color: trashItems.length ? '#dc2626' : '#6b7280', background: trashItems.length ? '#fef2f2' : '#f9fafb' }}
+          >
+            <LuTrash2 size={15} />
+            Recycle Bin
+            {trashItems.length > 0 && (
+              <span className="ml-0.5 px-1.5 py-0.5 rounded-full text-xs font-bold text-white bg-red-500">{trashItems.length}</span>
+            )}
+          </button>
         </div>
 
         {/* Flash */}

@@ -48,15 +48,27 @@ function buildData(body, file, existing = {}) {
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 
-// GET /api/programs?category=Science|Arts
+// GET /api/programs?category=Science|Arts (active only)
 router.get('/', async (req, res) => {
   try {
-    const filter = {};
+    const filter = { deletedAt: null };
     if (req.query.category) filter.category = req.query.category;
     if (req.query.department) filter.department = req.query.department;
     const programs = await Program.find(filter)
       .populate('department', 'name slug')
       .sort({ createdAt: -1 });
+    res.json(programs);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// GET /api/programs/trash
+router.get('/trash', async (req, res) => {
+  try {
+    const programs = await Program.find({ deletedAt: { $ne: null } })
+      .select('title category duration deletedAt')
+      .sort({ deletedAt: -1 });
     res.json(programs);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -103,16 +115,31 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// DELETE /api/programs/:id
+// PATCH /api/programs/:id/restore
+router.patch('/:id/restore', async (req, res) => {
+  try {
+    await Program.findByIdAndUpdate(req.params.id, { deletedAt: null });
+    res.json({ message: 'Program restored' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// DELETE /api/programs/:id/permanent
+router.delete('/:id/permanent', async (req, res) => {
+  try {
+    await Program.findByIdAndDelete(req.params.id);
+    res.json({ message: 'Program permanently deleted' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// DELETE /api/programs/:id — soft delete
 router.delete('/:id', async (req, res) => {
   try {
-    const program = await Program.findById(req.params.id);
-    if (program?.image) {
-      const filePath = path.join(__dirname, '../public', program.image);
-      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-    }
-    await Program.findByIdAndDelete(req.params.id);
-    res.json({ message: 'Program deleted' });
+    await Program.findByIdAndUpdate(req.params.id, { deletedAt: new Date() });
+    res.json({ message: 'Program moved to trash' });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
