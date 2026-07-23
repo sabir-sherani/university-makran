@@ -67,6 +67,8 @@ function buildData(body, files, existing = {}) {
   });
 
   // Tab 3
+  if (body.feeHeading        !== undefined) data.feeHeading        = body.feeHeading;
+  if (body.feeDescription    !== undefined) data.feeDescription    = body.feeDescription;
   if (body.feeAdmissionTitle !== undefined) data.feeAdmissionTitle = body.feeAdmissionTitle;
   if (body.feeSemesterTitle  !== undefined) data.feeSemesterTitle  = body.feeSemesterTitle;
   data.feeAdmissionRows = parseJson(body.feeAdmissionRowsJson, []);
@@ -79,6 +81,8 @@ function buildData(body, files, existing = {}) {
   if (body.visionDescription  !== undefined) data.visionDescription  = body.visionDescription;
 
   // Tab 5
+  if (body.courseHeading     !== undefined) data.courseHeading     = body.courseHeading;
+  if (body.courseDescription !== undefined) data.courseDescription = body.courseDescription;
   data.semesters = parseJson(body.semestersJson, []);
 
   // Tab 6

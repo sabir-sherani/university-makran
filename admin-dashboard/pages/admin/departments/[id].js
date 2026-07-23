@@ -178,6 +178,8 @@ export default function DepartmentEditor() {
     hodDescriptionHeading: '', hodDescription: '',
     staff: [],
 
+    feeHeading:        '',
+    feeDescription:    '',
     feeAdmissionTitle: 'Admission Time Fee Structure',
     feeAdmissionRows:  [],
     feeSemesterTitle:  'Per Semester Fee Structure',
@@ -186,6 +188,7 @@ export default function DepartmentEditor() {
     missionHeading: '', missionDescription: '',
     visionHeading: '',  visionDescription: '',
 
+    courseHeading: '', courseDescription: '',
     semesters: [],
     degreePrograms: [],
 
@@ -230,6 +233,8 @@ export default function DepartmentEditor() {
             bio: m.bio || '',
           })),
 
+          feeHeading:        data.feeHeading        || '',
+          feeDescription:    data.feeDescription    || '',
           feeAdmissionTitle: data.feeAdmissionTitle || 'Admission Time Fee Structure',
           feeAdmissionRows:  data.feeAdmissionRows  || [],
           feeSemesterTitle:  data.feeSemesterTitle  || 'Per Semester Fee Structure',
@@ -240,6 +245,8 @@ export default function DepartmentEditor() {
           visionHeading:      data.visionHeading      || '',
           visionDescription:  data.visionDescription  || '',
 
+          courseHeading:      data.courseHeading      || '',
+          courseDescription:  data.courseDescription  || '',
           semesters: (data.semesters || []).map(s => ({
             _id: s._id, title: s.title || '',
             courses: (s.courses || []).map(c => ({
@@ -343,6 +350,8 @@ export default function DepartmentEditor() {
         email: m.email, phone: m.phone, bio: m.bio || '', existingPhoto: m.existingPhoto || '',
       }))));
 
+      fd.append('feeHeading',            form.feeHeading);
+      fd.append('feeDescription',        form.feeDescription);
       fd.append('feeAdmissionTitle',    form.feeAdmissionTitle);
       fd.append('feeSemesterTitle',     form.feeSemesterTitle);
       fd.append('feeAdmissionRowsJson', JSON.stringify(form.feeAdmissionRows));
@@ -353,6 +362,8 @@ export default function DepartmentEditor() {
       fd.append('visionHeading',      form.visionHeading);
       fd.append('visionDescription',  form.visionDescription);
 
+      fd.append('courseHeading',      form.courseHeading);
+      fd.append('courseDescription',  form.courseDescription);
       fd.append('semestersJson',     JSON.stringify(form.semesters.map(s => ({
         title: s.title, courses: s.courses,
       }))));
@@ -628,6 +639,21 @@ export default function DepartmentEditor() {
           {/* ── TAB 3: Fee Structure ── */}
           {activeTab === 'fee' && (
             <div className="space-y-5 max-w-3xl">
+              <SectionCard title="Section Heading & Description">
+                <div className="space-y-4">
+                  <div>
+                    <FieldLabel>Section Heading</FieldLabel>
+                    <input value={form.feeHeading} onChange={e => setF('feeHeading', e.target.value)}
+                      placeholder="e.g. Fee Structure" className="admin-input" />
+                  </div>
+                  <div>
+                    <FieldLabel>Description</FieldLabel>
+                    <RichText extended value={form.feeDescription}
+                      onChange={v => setF('feeDescription', v)}
+                      placeholder="Write an introduction or notes about the fee structure…" />
+                  </div>
+                </div>
+              </SectionCard>
               <FeeTableSection
                 title="Admission Time Fee"
                 titleKey="feeAdmissionTitle"
@@ -685,6 +711,22 @@ export default function DepartmentEditor() {
           {/* ── TAB 5: Course Content ── */}
           {activeTab === 'courses' && (
             <div className="space-y-5 max-w-4xl">
+              <SectionCard title="Section Heading & Description">
+                <div className="space-y-4">
+                  <div>
+                    <FieldLabel>Section Heading</FieldLabel>
+                    <input value={form.courseHeading} onChange={e => setF('courseHeading', e.target.value)}
+                      placeholder="e.g. Course Curriculum" className="admin-input" />
+                  </div>
+                  <div>
+                    <FieldLabel>Description</FieldLabel>
+                    <RichText extended value={form.courseDescription}
+                      onChange={v => setF('courseDescription', v)}
+                      placeholder="Write an overview of the course content and structure…" />
+                  </div>
+                </div>
+              </SectionCard>
+
               <div className="flex items-center justify-between">
                 <h3 className="font-semibold text-gray-700">Semester-wise Course Structure</h3>
                 <AddRowBtn onClick={addSemester} label="Add Semester" />

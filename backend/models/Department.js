@@ -60,6 +60,8 @@ const DepartmentSchema = new mongoose.Schema({
   staff: [StaffSchema],
 
   // Tab 3 — Fee Structure
+  feeHeading:        { type: String, default: '' },
+  feeDescription:    { type: String, default: '' },
   feeAdmissionTitle: { type: String, default: 'Admission Time Fee Structure' },
   feeAdmissionRows:  [FeeRowSchema],
   feeSemesterTitle:  { type: String, default: 'Per Semester Fee Structure' },
@@ -72,6 +74,8 @@ const DepartmentSchema = new mongoose.Schema({
   visionDescription:  String,
 
   // Tab 5 — Course Content
+  courseHeading:     { type: String, default: '' },
+  courseDescription: { type: String, default: '' },
   semesters: [SemesterSchema],
 
   // Tab 6 — Degree Programs
