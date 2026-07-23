@@ -57,12 +57,12 @@ a {
   width: 10px;
 }
 ::-webkit-scrollbar-track {
-  background: #041476;
+  background: #0B1229;
 }
 ::-webkit-scrollbar-thumb {
   background: #FA7902;
   border-radius: 6px;
-  border: 2px solid #041476;
+  border: 2px solid #0B1229;
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #e06a00;
@@ -70,6 +70,6 @@ a {
 
 /* Firefox */
 * {
-  scrollbar-color: #FA7902 #041476;
+  scrollbar-color: #FA7902 #0B1229;
   scrollbar-width: thin;
 }
