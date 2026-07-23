@@ -373,9 +373,31 @@ export default function DepartmentPage({ dept }) {
           {/* ── TAB: Fee Structure ── */}
           {activeTab === 'fee' && (
             <div className="space-y-6">
-              <h2 className="text-xl font-bold text-gray-900">Fee Structure</h2>
+              {dept.feeHeading ? (
+                <div>
+                  <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">{dept.feeHeading}</h2>
+                  <div className="flex gap-1.5 mb-6">
+                    <span className="h-1 w-10 rounded-full" style={{ background: '#041476' }} />
+                    <span className="h-1 w-4 rounded-full" style={{ background: '#041476' }} />
+                    <span className="h-1 w-2 rounded-full bg-gray-300" />
+                  </div>
+                </div>
+              ) : (
+                <h2 className="text-xl font-bold text-gray-900">Fee Structure</h2>
+              )}
+              {dept.feeDescription && (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
+                  <RichContent html={dept.feeDescription} />
+                </div>
+              )}
               <FeeTable title={dept.feeAdmissionTitle || 'Admission Time Fee Structure'} rows={dept.feeAdmissionRows} />
               <FeeTable title={dept.feeSemesterTitle  || 'Per Semester Fee Structure'}   rows={dept.feeSemesterRows} />
+              {!dept.feeDescription && !dept.feeAdmissionRows?.length && !dept.feeSemesterRows?.length && (
+                <div className="bg-white rounded-2xl p-16 text-center text-gray-400 border border-gray-100">
+                  <p className="text-4xl mb-3">💰</p>
+                  <p className="font-medium">Fee structure information coming soon.</p>
+                </div>
+              )}
             </div>
           )}
 
@@ -503,10 +525,32 @@ export default function DepartmentPage({ dept }) {
           {/* ── TAB: Course Content ── */}
           {activeTab === 'courses' && (
             <div className="space-y-4">
-              <h2 className="text-xl font-bold text-gray-900">Course Structure</h2>
+              {dept.courseHeading ? (
+                <div>
+                  <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">{dept.courseHeading}</h2>
+                  <div className="flex gap-1.5 mb-6">
+                    <span className="h-1 w-10 rounded-full" style={{ background: '#041476' }} />
+                    <span className="h-1 w-4 rounded-full" style={{ background: '#041476' }} />
+                    <span className="h-1 w-2 rounded-full bg-gray-300" />
+                  </div>
+                </div>
+              ) : (
+                <h2 className="text-xl font-bold text-gray-900">Course Structure</h2>
+              )}
+              {dept.courseDescription && (
+                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 mb-2">
+                  <RichContent html={dept.courseDescription} />
+                </div>
+              )}
               {dept.semesters?.map((sem, i) => (
                 <SemesterTable key={sem._id || i} sem={sem} index={i} />
               ))}
+              {!dept.courseDescription && !dept.semesters?.length && (
+                <div className="bg-white rounded-2xl p-16 text-center text-gray-400 border border-gray-100">
+                  <p className="text-4xl mb-3">📚</p>
+                  <p className="font-medium">Course content coming soon.</p>
+                </div>
+              )}
             </div>
           )}
 
@@ -527,6 +571,12 @@ export default function DepartmentPage({ dept }) {
                   </div>
                 </div>
               ))}
+              {!dept.degreePrograms?.length && (
+                <div className="bg-white rounded-2xl p-16 text-center text-gray-400 border border-gray-100">
+                  <p className="text-4xl mb-3">🎓</p>
+                  <p className="font-medium">Degree programs information coming soon.</p>
+                </div>
+              )}
             </div>
           )}
 
