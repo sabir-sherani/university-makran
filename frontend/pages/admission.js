@@ -530,7 +530,8 @@ export default function Admission() {
   const [noticesLoading, setNoticesLoading] = useState(true);
   const [lightboxImg,    setLightboxImg]    = useState(null);
   const [programList,    setProgramList]    = useState([]);
-  const [departmentList, setDepartmentList] = useState([]);
+  const [programsLoading, setProgramsLoading] = useState(false);
+  const [departmentList, setDepartmentList] = useState([]); // [{_id, name}]
 
   useEffect(() => {
     axios.get(`${API_URL}/admission-content/notices`)
@@ -539,17 +540,23 @@ export default function Admission() {
       .finally(() => setNoticesLoading(false));
   }, []);
 
+  // Load department list once (store full objects so we have _id)
   useEffect(() => {
-    axios.get(`${API_URL}/programs`)
-      .then(res => setProgramList((res.data || []).map(p => p.title).filter(Boolean)))
+    axios.get(`${API_URL}/departments`)
+      .then(res => setDepartmentList((res.data || []).filter(d => d.name)))
       .catch(() => {});
   }, []);
 
+  // Re-fetch programs whenever the selected department changes
   useEffect(() => {
-    axios.get(`${API_URL}/departments`)
-      .then(res => setDepartmentList((res.data || []).map(d => d.name).filter(Boolean)))
-      .catch(() => {});
-  }, []);
+    const selected = departmentList.find(d => d.name === formData.department);
+    if (!selected) { setProgramList([]); return; }
+    setProgramsLoading(true);
+    axios.get(`${API_URL}/programs?department=${selected._id}`)
+      .then(res => setProgramList((res.data || []).map(p => p.title).filter(Boolean)))
+      .catch(() => setProgramList([]))
+      .finally(() => setProgramsLoading(false));
+  }, [formData.department, departmentList]);
 
 
   const handleChange = (e) => {
@@ -561,7 +568,12 @@ export default function Admission() {
       else if (digits.length <= 12) value = `${digits.slice(0,5)}-${digits.slice(5)}`;
       else                          value = `${digits.slice(0,5)}-${digits.slice(5,12)}-${digits.slice(12)}`;
     }
-    setFormData(prev => ({ ...prev, [e.target.name]: value }));
+    setFormData(prev => ({
+      ...prev,
+      [e.target.name]: value,
+      // reset program when department changes
+      ...(e.target.name === 'department' ? { program: '' } : {}),
+    }));
     if (errors[e.target.name]) setErrors(prev => ({ ...prev, [e.target.name]: '' }));
   };
 
@@ -931,7 +943,7 @@ export default function Admission() {
                             style={{ border: `1.5px solid ${errors.department ? '#f87171' : '#e2e8f0'}`, borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}
                             className="w-full px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-white transition-all text-gray-700">
                             <option value="">— Select Department —</option>
-                            {departmentList.map(d => <option key={d} value={d}>{d}</option>)}
+                            {departmentList.map(d => <option key={d._id} value={d.name}>{d.name}</option>)}
                           </select>
                           {errors.department && <p className="text-red-500 text-xs mt-1">{errors.department}</p>}
                         </div>
@@ -941,10 +953,20 @@ export default function Admission() {
                           </label>
                           <select name="program" value={formData.program}
                             onChange={e => { handleChange(e); setErrors(p => ({ ...p, program: '' })); }}
-                            style={{ border: `1.5px solid ${errors.program ? '#f87171' : '#e2e8f0'}`, borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}
+                            disabled={!formData.department || programsLoading}
+                            style={{ border: `1.5px solid ${errors.program ? '#f87171' : '#e2e8f0'}`, borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.05)', opacity: (!formData.department || programsLoading) ? 0.6 : 1 }}
                             className="w-full px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-white transition-all text-gray-700">
-                            <option value="">— Select Program —</option>
-                            {programList.map(p => <option key={p} value={p}>{p}</option>)}
+                            {!formData.department
+                              ? <option value="">— Select a department first —</option>
+                              : programsLoading
+                              ? <option value="">Loading programs…</option>
+                              : programList.length === 0
+                              ? <option value="">No programs available for this department</option>
+                              : <>
+                                  <option value="">— Select Program —</option>
+                                  {programList.map(p => <option key={p} value={p}>{p}</option>)}
+                                </>
+                            }
                           </select>
                           {errors.program && <p className="text-red-500 text-xs mt-1">{errors.program}</p>}
                         </div>
