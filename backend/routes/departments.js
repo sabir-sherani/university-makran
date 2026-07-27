@@ -127,7 +127,7 @@ router.get('/', async (req, res) => {
   try {
     const filter = req.query.all === '1'
       ? { deletedAt: null }
-      : { deletedAt: null, suspended: false };
+      : { deletedAt: null, suspended: { $ne: true } };
     const depts = await Department.find(filter)
       .select('name slug bannerImage hod description suspended')
       .sort('name');
