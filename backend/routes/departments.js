@@ -174,9 +174,10 @@ router.post('/:id/suspend-otp', async (req, res) => {
     const otp = String(Math.floor(100000 + Math.random() * 900000));
 
     // Upsert — replace any existing OTP for this dept+action
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
     await SuspensionOtp.findOneAndUpdate(
       { deptId: req.params.id, action },
-      { otp },
+      { otp, expiresAt },
       { upsert: true, new: true }
     );
 
@@ -201,6 +202,10 @@ router.patch('/:id/suspend', async (req, res) => {
 
     if (!record)
       return res.status(400).json({ message: 'No OTP requested. Please request a new one.' });
+    if (new Date() > record.expiresAt) {
+      await SuspensionOtp.deleteOne({ _id: record._id });
+      return res.status(400).json({ message: 'OTP has expired. Please request a new one.' });
+    }
     if (record.otp !== String(otp).trim())
       return res.status(400).json({ message: 'Incorrect OTP.' });
 
