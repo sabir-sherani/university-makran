@@ -20,7 +20,10 @@ export async function getServerSideProps({ params }) {
   try {
     const { data } = await axios.get(`${API_URL}/departments/slug/${params.slug}`);
     return { props: { dept: data } };
-  } catch {
+  } catch (err) {
+    if (err.response?.data?.suspended) {
+      return { props: { dept: null, suspended: true } };
+    }
     return { notFound: true };
   }
 }
@@ -205,7 +208,29 @@ function StaffCard({ m, onReadMore }) {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
-export default function DepartmentPage({ dept }) {
+export default function DepartmentPage({ dept, suspended }) {
+  if (suspended) {
+    return (
+      <>
+        <Header />
+        <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 px-4 text-center">
+          <div className="w-20 h-20 rounded-full flex items-center justify-center mb-6 text-4xl"
+            style={{ background: '#fef9c3' }}>⏸</div>
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Department Suspended</h1>
+          <p className="text-gray-500 max-w-md mb-8">
+            This department is temporarily suspended and not available for viewing. Please check back later or contact the university for more information.
+          </p>
+          <a href="/departments"
+            className="px-6 py-2.5 rounded-xl font-semibold text-white text-sm"
+            style={{ background: '#041476' }}>
+            View All Departments
+          </a>
+        </div>
+        <Footer />
+      </>
+    );
+  }
+
   const tabs = buildTabs();
   const [activeTab, setActiveTab] = useState(tabs[0]?.key || 'about');
   const [bioModal, setBioModal] = useState(null);
