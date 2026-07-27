@@ -20,7 +20,7 @@ const CATEGORIES = [
 
 const emptyForm = {
   title: '', category: 'Science', duration: '', semesters: '',
-  shortDescription: '', level: 'Undergraduate',
+  shortDescription: '', level: 'Undergraduate', department: '',
 };
 
 function imgSrc(image) {
@@ -38,6 +38,7 @@ export default function Programs() {
   const [existingImage, setExistingImage] = useState('');
   const [loading, setLoading]         = useState(true);
   const [saving, setSaving]           = useState(false);
+  const [deptList, setDeptList]       = useState([]); // [{_id, name}]
   const [errors, setErrors]           = useState({});
   const [flash, setFlash]             = useState({ text: '', ok: true });
   const [filterCat, setFilterCat]     = useState('all');
@@ -46,7 +47,13 @@ export default function Programs() {
   const [showTrash, setShowTrash]     = useState(false);
   const fileRef = useRef(null);
 
-  useEffect(() => { fetchPrograms(); fetchTrash(); }, []);
+  useEffect(() => {
+    fetchPrograms();
+    fetchTrash();
+    axios.get(`${API}/departments?all=1`)
+      .then(res => setDeptList(res.data || []))
+      .catch(() => {});
+  }, []);
 
   async function fetchTrash() {
     setTrashLoading(true);
@@ -121,9 +128,10 @@ export default function Programs() {
 
   function validate() {
     const errs = {};
-    if (!formData.title.trim())    errs.title    = 'Program title is required';
-    if (!formData.category)        errs.category = 'Please select a category';
-    if (!formData.duration.trim()) errs.duration = 'Duration is required';
+    if (!formData.department)      errs.department = 'Please select a department';
+    if (!formData.title.trim())    errs.title      = 'Program title is required';
+    if (!formData.category)        errs.category   = 'Please select a category';
+    if (!formData.duration.trim()) errs.duration   = 'Duration is required';
     return errs;
   }
 
@@ -146,6 +154,7 @@ export default function Programs() {
       semesters:        prog.semesters || '',
       shortDescription: prog.shortDescription || '',
       level:            prog.level || 'Undergraduate',
+      department:       prog.department?._id || prog.department || '',
     });
     const src = imgSrc(prog.image);
     setExistingImage(prog.image || '');
@@ -297,6 +306,23 @@ export default function Programs() {
                     ))}
                   </div>
                   {errors.category && <p className="text-red-500 text-xs mt-1">{errors.category}</p>}
+                </div>
+
+                {/* Department */}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                    Department <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    name="department" value={formData.department} onChange={handleField}
+                    className={`w-full px-4 py-2.5 rounded-xl border text-sm transition-colors outline-none focus:ring-2 focus:ring-blue-100 ${errors.department ? 'border-red-400' : 'border-gray-200 focus:border-primary'}`}
+                  >
+                    <option value="">— Select Department —</option>
+                    {deptList.map(d => (
+                      <option key={d._id} value={d._id}>{d.name}</option>
+                    ))}
+                  </select>
+                  {errors.department && <p className="text-red-500 text-xs mt-1">{errors.department}</p>}
                 </div>
 
                 {/* Title */}

@@ -36,6 +36,7 @@ function buildData(body, file, existing = {}) {
   if (body.shortDescription !== undefined) data.shortDescription = body.shortDescription;
   if (body.description      !== undefined) data.description      = body.description;
   if (body.level            !== undefined) data.level            = body.level;
+  if (body.department       !== undefined) data.department       = body.department || null;
 
   if (file) {
     data.image = file.path;
