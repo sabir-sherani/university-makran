@@ -3,13 +3,11 @@ const router  = express.Router();
 const multer  = require('multer');
 const path    = require('path');
 const fs      = require('fs');
-const Department = require('../models/Department');
+const Department    = require('../models/Department');
+const SuspensionOtp = require('../models/SuspensionOtp');
 const { sendSuspensionOtpEmail } = require('../utils/mailer');
 
 const { createStorage } = require('../utils/cloudinary');
-
-// In-memory OTP store: key = `${deptId}:${action}`, value = { otp, expiresAt }
-const otpStore = new Map();
 const upload = multer({ storage: createStorage('departments', ['jpg', 'jpeg', 'png', 'webp']) });
 
 const deptUpload = upload.fields([
@@ -163,7 +161,7 @@ router.get('/slug/:slug', async (req, res) => {
   }
 });
 
-// POST /api/departments/:id/suspend-otp — generate & email OTP
+// POST /api/departments/:id/suspend-otp — generate & email OTP (stored in DB)
 router.post('/:id/suspend-otp', async (req, res) => {
   try {
     const { action } = req.body; // 'suspend' | 'unsuspend'
@@ -174,8 +172,13 @@ router.post('/:id/suspend-otp', async (req, res) => {
     if (!dept) return res.status(404).json({ message: 'Department not found' });
 
     const otp = String(Math.floor(100000 + Math.random() * 900000));
-    const key = `${req.params.id}:${action}`;
-    otpStore.set(key, { otp, expiresAt: Date.now() + 5 * 60 * 1000 });
+
+    // Upsert — replace any existing OTP for this dept+action
+    await SuspensionOtp.findOneAndUpdate(
+      { deptId: req.params.id, action },
+      { otp },
+      { upsert: true, new: true }
+    );
 
     const adminEmail = process.env.GMAIL_USER;
     await sendSuspensionOtpEmail(adminEmail, dept.name, otp, action);
@@ -194,19 +197,15 @@ router.patch('/:id/suspend', async (req, res) => {
       return res.status(400).json({ message: 'Invalid action.' });
     if (!otp) return res.status(400).json({ message: 'OTP is required.' });
 
-    const key = `${req.params.id}:${action}`;
-    const record = otpStore.get(key);
+    const record = await SuspensionOtp.findOne({ deptId: req.params.id, action });
 
-    if (!record) return res.status(400).json({ message: 'No OTP requested. Please request a new one.' });
-    if (Date.now() > record.expiresAt) {
-      otpStore.delete(key);
-      return res.status(400).json({ message: 'OTP has expired. Please request a new one.' });
-    }
-    if (record.otp !== String(otp).trim()) {
+    if (!record)
+      return res.status(400).json({ message: 'No OTP requested. Please request a new one.' });
+    if (record.otp !== String(otp).trim())
       return res.status(400).json({ message: 'Incorrect OTP.' });
-    }
 
-    otpStore.delete(key);
+    // OTP correct — delete it and suspend the department
+    await SuspensionOtp.deleteOne({ _id: record._id });
     const suspended = action === 'suspend';
     const dept = await Department.findByIdAndUpdate(req.params.id, { suspended }, { new: true });
     res.json({ message: `Department ${suspended ? 'suspended' : 'unsuspended'} successfully.`, dept });
