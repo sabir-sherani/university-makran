@@ -420,7 +420,108 @@ export default function Admission() {
   const [picPreview, setPicPreview]   = useState('');
   const [submitted, setSubmitted]     = useState(false);
   const [loading, setLoading]         = useState(false);
+  const [errors, setErrors]           = useState({});
   const picRef = useRef();
+
+  const todayStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD, used as max for DOB
+
+  function validate() {
+    const errs = {};
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const yr = today.getFullYear();
+
+    if (!formData.department) errs.department = 'Please select a department.';
+    if (!formData.program)    errs.program    = 'Please select a program.';
+
+    if (!formData.candidateName.trim())
+      errs.candidateName = 'Candidate name is required.';
+    else if (formData.candidateName.trim().length < 3)
+      errs.candidateName = 'Name must be at least 3 characters.';
+    else if (!/^[a-zA-Z\s.''-]+$/.test(formData.candidateName.trim()))
+      errs.candidateName = 'Name may only contain letters, spaces, dots and hyphens.';
+
+    if (!formData.fatherName.trim())
+      errs.fatherName = "Father's name is required.";
+    else if (formData.fatherName.trim().length < 3)
+      errs.fatherName = 'Name must be at least 3 characters.';
+    else if (!/^[a-zA-Z\s.''-]+$/.test(formData.fatherName.trim()))
+      errs.fatherName = 'Name may only contain letters, spaces, dots and hyphens.';
+
+    if (!formData.email.trim())
+      errs.email = 'Email address is required.';
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim()))
+      errs.email = 'Enter a valid email address (e.g. name@example.com).';
+
+    if (!formData.cnic.trim())
+      errs.cnic = 'CNIC is required.';
+    else if (!/^\d{5}-\d{7}-\d$/.test(formData.cnic.trim()))
+      errs.cnic = 'CNIC must be in the format: XXXXX-XXXXXXX-X';
+
+    if (!formData.dob)
+      errs.dob = 'Date of birth is required.';
+    else {
+      const dob = new Date(formData.dob);
+      if (dob >= today)
+        errs.dob = 'Date of birth cannot be today or a future date.';
+      else {
+        const minDob = new Date(today); minDob.setFullYear(today.getFullYear() - 14);
+        if (dob > minDob) errs.dob = 'Applicant must be at least 14 years old.';
+      }
+    }
+
+    if (!formData.gender) errs.gender = 'Please select your gender.';
+
+    const phoneRe = /^0\d{10}$/;
+    if (!formData.phone.trim())
+      errs.phone = 'Phone number is required.';
+    else if (!phoneRe.test(formData.phone.trim().replace(/[\s-]/g, '')))
+      errs.phone = 'Enter a valid 11-digit Pakistani number starting with 0.';
+
+    if (!formData.whatsapp.trim())
+      errs.whatsapp = 'WhatsApp number is required.';
+    else if (!phoneRe.test(formData.whatsapp.trim().replace(/[\s-]/g, '')))
+      errs.whatsapp = 'Enter a valid 11-digit Pakistani number starting with 0.';
+
+    if (!formData.nationality) errs.nationality = 'Please select your nationality.';
+
+    if (!formData.city.trim())
+      errs.city = 'City is required.';
+    else if (formData.city.trim().length < 2)
+      errs.city = 'Enter a valid city name.';
+
+    if (!formData.currentAddress.trim())
+      errs.currentAddress = 'Current address is required.';
+    else if (formData.currentAddress.trim().length < 10)
+      errs.currentAddress = 'Please enter a complete address (at least 10 characters).';
+
+    if (!formData.permanentAddress.trim())
+      errs.permanentAddress = 'Permanent address is required.';
+    else if (formData.permanentAddress.trim().length < 10)
+      errs.permanentAddress = 'Please enter a complete address (at least 10 characters).';
+
+    if (!profilePic) errs.profilePic = 'Profile picture is required.';
+
+    for (const row of QUAL_ROWS.filter(r => r.required)) {
+      const q = quals[row.key];
+      if (!q.degreeTitle.trim())
+        errs[`q_${row.key}_degreeTitle`] = `${row.label}: degree title required.`;
+      if (!q.passingYear)
+        errs[`q_${row.key}_passingYear`] = `${row.label}: passing year required.`;
+      else if (parseInt(q.passingYear) < 1980 || parseInt(q.passingYear) > yr)
+        errs[`q_${row.key}_passingYear`] = `${row.label}: year must be 1980–${yr}.`;
+      if (!q.obtainedMarks.trim())
+        errs[`q_${row.key}_obtainedMarks`] = `${row.label}: obtained marks required.`;
+      if (!q.totalMarks.trim())
+        errs[`q_${row.key}_totalMarks`] = `${row.label}: total marks required.`;
+      const obt = parseFloat(q.obtainedMarks), tot = parseFloat(q.totalMarks);
+      if (!isNaN(obt) && !isNaN(tot) && obt > tot)
+        errs[`q_${row.key}_obtainedMarks`] = `${row.label}: obtained marks cannot exceed total.`;
+      if (!isNaN(tot) && tot <= 0)
+        errs[`q_${row.key}_totalMarks`] = `${row.label}: total marks must be greater than 0.`;
+    }
+
+    return errs;
+  }
 
   const handleQual = (rowKey, field, value) =>
     setQuals(prev => ({ ...prev, [rowKey]: { ...prev[rowKey], [field]: value } }));
@@ -451,8 +552,18 @@ export default function Admission() {
   }, []);
 
 
-  const handleChange = (e) =>
-    setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
+  const handleChange = (e) => {
+    let value = e.target.value;
+    // Auto-format CNIC as user types: XXXXX-XXXXXXX-X
+    if (e.target.name === 'cnic') {
+      const digits = value.replace(/\D/g, '').slice(0, 13);
+      if (digits.length <= 5)       value = digits;
+      else if (digits.length <= 12) value = `${digits.slice(0,5)}-${digits.slice(5)}`;
+      else                          value = `${digits.slice(0,5)}-${digits.slice(5,12)}-${digits.slice(12)}`;
+    }
+    setFormData(prev => ({ ...prev, [e.target.name]: value }));
+    if (errors[e.target.name]) setErrors(prev => ({ ...prev, [e.target.name]: '' }));
+  };
 
   const handlePic = (e) => {
     const file = e.target.files?.[0];
@@ -463,6 +574,16 @@ export default function Admission() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const errs = validate();
+    if (Object.keys(errs).length > 0) {
+      setErrors(errs);
+      setTimeout(() => {
+        const el = document.querySelector('[data-has-error="true"]');
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 50);
+      return;
+    }
+    setErrors({});
     setLoading(true);
     try {
       const fd = new FormData();
@@ -477,7 +598,8 @@ export default function Admission() {
       setPicPreview('');
       if (picRef.current) picRef.current.value = '';
     } catch (error) {
-      console.error('Error submitting application:', error);
+      const msg = error.response?.data?.message || 'Failed to submit application. Please try again.';
+      setErrors({ _server: msg });
     }
     setLoading(false);
   };
@@ -758,7 +880,27 @@ export default function Admission() {
                 </div>
               </div>
 
-              <form onSubmit={handleSubmit} className="p-6 md:p-9 space-y-8">
+              <form onSubmit={handleSubmit} className="p-6 md:p-9 space-y-8" noValidate>
+
+                {/* ── Validation error summary ── */}
+                {Object.keys(errors).length > 0 && (
+                  <div className="flex items-start gap-3 px-5 py-4 rounded-xl border border-red-200 bg-red-50" data-has-error="true">
+                    <svg className="w-5 h-5 text-red-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                    </svg>
+                    <div>
+                      <p className="text-sm font-bold text-red-700">Please fix the following before submitting:</p>
+                      <ul className="mt-1 space-y-0.5 list-disc list-inside">
+                        {errors._server
+                          ? <li className="text-xs text-red-600">{errors._server}</li>
+                          : Object.entries(errors).map(([k, v]) => v && (
+                              <li key={k} className="text-xs text-red-600">{v}</li>
+                            ))
+                        }
+                      </ul>
+                    </div>
+                  </div>
+                )}
 
                 {/* ── Section 1: Program of Study ── */}
                 <div style={{ borderRadius: '18px', border: '1.5px solid rgba(4,20,118,0.12)', overflow: 'hidden', boxShadow: '0 4px 20px rgba(4,20,118,0.06)' }}>
@@ -780,31 +922,31 @@ export default function Admission() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       {/* Left: Department + Program */}
                       <div className="space-y-5">
-                        <div>
+                        <div data-has-error={!!errors.department}>
                           <label className="block text-xs font-bold text-primary/70 uppercase tracking-wider mb-2">
                             Department <span className="text-red-500">*</span>
                           </label>
-                          <select name="department" value={formData.department} onChange={handleChange} required
-                            style={{ border: '1.5px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}
+                          <select name="department" value={formData.department}
+                            onChange={e => { handleChange(e); setErrors(p => ({ ...p, department: '' })); }}
+                            style={{ border: `1.5px solid ${errors.department ? '#f87171' : '#e2e8f0'}`, borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}
                             className="w-full px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-white transition-all text-gray-700">
                             <option value="">— Select Department —</option>
-                            {departmentList.map(d => (
-                              <option key={d} value={d}>{d}</option>
-                            ))}
+                            {departmentList.map(d => <option key={d} value={d}>{d}</option>)}
                           </select>
+                          {errors.department && <p className="text-red-500 text-xs mt-1">{errors.department}</p>}
                         </div>
-                        <div>
+                        <div data-has-error={!!errors.program}>
                           <label className="block text-xs font-bold text-primary/70 uppercase tracking-wider mb-2">
                             Program <span className="text-red-500">*</span>
                           </label>
-                          <select name="program" value={formData.program} onChange={handleChange} required
-                            style={{ border: '1.5px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}
+                          <select name="program" value={formData.program}
+                            onChange={e => { handleChange(e); setErrors(p => ({ ...p, program: '' })); }}
+                            style={{ border: `1.5px solid ${errors.program ? '#f87171' : '#e2e8f0'}`, borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}
                             className="w-full px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-white transition-all text-gray-700">
                             <option value="">— Select Program —</option>
-                            {programList.map(p => (
-                              <option key={p} value={p}>{p}</option>
-                            ))}
+                            {programList.map(p => <option key={p} value={p}>{p}</option>)}
                           </select>
+                          {errors.program && <p className="text-red-500 text-xs mt-1">{errors.program}</p>}
                         </div>
                       </div>
 
@@ -869,84 +1011,95 @@ export default function Admission() {
                         { label: 'Candidate Name', name: 'candidateName', type: 'text', placeholder: 'Full Name', required: true },
                         { label: 'Father Name', name: 'fatherName', type: 'text', placeholder: "Father's Full Name", required: true },
                         { label: 'E-mail Address', name: 'email', type: 'email', placeholder: 'someone@example.com', required: true },
-                        { label: 'CNIC Number', name: 'cnic', type: 'text', placeholder: '00000-0000000-0', required: true, maxLength: 15 },
-                        { label: 'Date of Birth', name: 'dob', type: 'date', required: true },
-                        { label: 'Phone Number', name: 'phone', type: 'tel', placeholder: 'e.g. 0512234000', required: true },
-                        { label: 'WhatsApp Number', name: 'whatsapp', type: 'tel', placeholder: '03001234567', required: true },
+                        { label: 'CNIC Number', name: 'cnic', type: 'text', placeholder: '00000-0000000-0', required: true, maxLength: 15, hint: 'Format: XXXXX-XXXXXXX-X (auto-formatted)' },
+                        { label: 'Date of Birth', name: 'dob', type: 'date', required: true, max: todayStr },
+                        { label: 'Phone Number', name: 'phone', type: 'tel', placeholder: '03001234567', required: true, hint: '11-digit Pakistani number starting with 0' },
+                        { label: 'WhatsApp Number', name: 'whatsapp', type: 'tel', placeholder: '03001234567', required: true, hint: '11-digit Pakistani number starting with 0' },
                         { label: 'City', name: 'city', type: 'text', placeholder: 'Your City', required: true },
                       ].map(f => (
-                        <div key={f.name}>
+                        <div key={f.name} data-has-error={!!errors[f.name]}>
                           <label className="block text-xs font-bold text-primary/70 uppercase tracking-wider mb-2">
                             {f.label} {f.required && <span className="text-red-500">*</span>}
                           </label>
                           <input
                             type={f.type} name={f.name} value={formData[f.name]}
-                            onChange={handleChange} required={f.required}
+                            onChange={handleChange}
                             placeholder={f.placeholder || ''} maxLength={f.maxLength}
-                            style={{ border: '1.5px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}
+                            max={f.max}
+                            style={{ border: `1.5px solid ${errors[f.name] ? '#f87171' : '#e2e8f0'}`, borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}
                             className="w-full px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-white transition-all text-gray-700"
                           />
+                          {errors[f.name]
+                            ? <p className="text-red-500 text-xs mt-1">{errors[f.name]}</p>
+                            : f.hint && <p className="text-gray-400 text-xs mt-1">{f.hint}</p>
+                          }
                         </div>
                       ))}
 
                       {/* Gender */}
-                      <div>
+                      <div data-has-error={!!errors.gender}>
                         <label className="block text-xs font-bold text-primary/70 uppercase tracking-wider mb-2">
                           Gender <span className="text-red-500">*</span>
                         </label>
-                        <div className="flex items-center gap-4 px-4 py-3" style={{ border: '1.5px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
+                        <div className="flex items-center gap-4 px-4 py-3" style={{ border: `1.5px solid ${errors.gender ? '#f87171' : '#e2e8f0'}`, borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
                           {['Male','Female'].map(g => (
                             <label key={g} className="flex items-center gap-2.5 cursor-pointer text-sm font-medium text-gray-700">
-                              <input type="radio" name="gender" value={g} checked={formData.gender === g} onChange={handleChange} required
+                              <input type="radio" name="gender" value={g} checked={formData.gender === g}
+                                onChange={e => { handleChange(e); setErrors(p => ({ ...p, gender: '' })); }}
                                 className="w-4 h-4 accent-primary" />
                               {g}
                             </label>
                           ))}
                         </div>
+                        {errors.gender && <p className="text-red-500 text-xs mt-1">{errors.gender}</p>}
                       </div>
 
                       {/* Nationality */}
-                      <div>
+                      <div data-has-error={!!errors.nationality}>
                         <label className="block text-xs font-bold text-primary/70 uppercase tracking-wider mb-2">
                           Nationality <span className="text-red-500">*</span>
                         </label>
-                        <select name="nationality" value={formData.nationality} onChange={handleChange} required
-                          style={{ border: '1.5px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}
+                        <select name="nationality" value={formData.nationality}
+                          onChange={e => { handleChange(e); setErrors(p => ({ ...p, nationality: '' })); }}
+                          style={{ border: `1.5px solid ${errors.nationality ? '#f87171' : '#e2e8f0'}`, borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}
                           className="w-full px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-white transition-all text-gray-700">
                           <option value="">— Select Nationality —</option>
                           <option value="Pakistani">Pakistani</option>
                           <option value="Other">Other</option>
                         </select>
+                        {errors.nationality && <p className="text-red-500 text-xs mt-1">{errors.nationality}</p>}
                       </div>
 
                       {/* Current Address */}
-                      <div>
+                      <div data-has-error={!!errors.currentAddress}>
                         <label className="block text-xs font-bold text-primary/70 uppercase tracking-wider mb-2">
                           Current Address <span className="text-red-500">*</span>
                         </label>
-                        <textarea name="currentAddress" value={formData.currentAddress} onChange={handleChange} required
+                        <textarea name="currentAddress" value={formData.currentAddress} onChange={handleChange}
                           rows={3} placeholder="Enter current address"
-                          style={{ border: '1.5px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}
+                          style={{ border: `1.5px solid ${errors.currentAddress ? '#f87171' : '#e2e8f0'}`, borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}
                           className="w-full px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all resize-none text-gray-700" />
+                        {errors.currentAddress && <p className="text-red-500 text-xs mt-1">{errors.currentAddress}</p>}
                       </div>
 
                       {/* Permanent Address */}
-                      <div>
+                      <div data-has-error={!!errors.permanentAddress}>
                         <label className="block text-xs font-bold text-primary/70 uppercase tracking-wider mb-2">
                           Permanent Address <span className="text-red-500">*</span>
                         </label>
-                        <textarea name="permanentAddress" value={formData.permanentAddress} onChange={handleChange} required
+                        <textarea name="permanentAddress" value={formData.permanentAddress} onChange={handleChange}
                           rows={3} placeholder="Enter permanent address"
-                          style={{ border: '1.5px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}
+                          style={{ border: `1.5px solid ${errors.permanentAddress ? '#f87171' : '#e2e8f0'}`, borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}
                           className="w-full px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all resize-none text-gray-700" />
+                        {errors.permanentAddress && <p className="text-red-500 text-xs mt-1">{errors.permanentAddress}</p>}
                       </div>
 
                       {/* Profile Picture — full width */}
-                      <div className="md:col-span-2">
+                      <div className="md:col-span-2" data-has-error={!!errors.profilePic}>
                         <label className="block text-xs font-bold text-primary/70 uppercase tracking-wider mb-2">
                           Profile Picture <span className="text-red-500">*</span>
                         </label>
-                        <div className="flex items-center gap-5 p-4" style={{ border: '2px dashed rgba(4,20,118,0.2)', borderRadius: '14px', background: 'linear-gradient(135deg, #f8faff, #f0f4ff)' }}>
+                        <div className="flex items-center gap-5 p-4" style={{ border: `2px dashed ${errors.profilePic ? '#f87171' : 'rgba(4,20,118,0.2)'}`, borderRadius: '14px', background: 'linear-gradient(135deg, #f8faff, #f0f4ff)' }}>
                           {picPreview ? (
                             <img src={picPreview} alt="Preview" className="w-16 h-16 rounded-full object-cover shrink-0" style={{ border: '3px solid #041476', boxShadow: '0 4px 12px rgba(4,20,118,0.25)' }} />
                           ) : (
@@ -958,11 +1111,13 @@ export default function Admission() {
                           )}
                           <div className="flex-1">
                             <p className="text-xs font-semibold text-primary mb-2">Upload your photo</p>
-                            <input ref={picRef} type="file" accept=".jpg,.jpeg,.png" onChange={handlePic} required={!profilePic}
+                            <input ref={picRef} type="file" accept=".jpg,.jpeg,.png"
+                              onChange={e => { handlePic(e); setErrors(p => ({ ...p, profilePic: '' })); }}
                               className="w-full text-sm text-gray-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-primary file:text-white hover:file:opacity-90 cursor-pointer" />
                             <p className="text-xs text-gray-400 mt-1.5">JPG, JPEG or PNG · Max 5 MB</p>
                           </div>
                         </div>
+                        {errors.profilePic && <p className="text-red-500 text-xs mt-1">{errors.profilePic}</p>}
                       </div>
 
                     </div>
@@ -1011,21 +1166,29 @@ export default function Admission() {
                                 </span>
                               </div>
                             </td>
-                            {(['degreeTitle','passingYear','obtainedMarks','totalMarks','board']).map(field => (
-                              <td key={field} className="px-2.5 py-2.5" style={{ borderTop: '1px solid rgba(4,20,118,0.06)', borderLeft: '1px solid rgba(4,20,118,0.06)' }}>
-                                <input
-                                  type={field === 'passingYear' ? 'number' : 'text'}
-                                  value={quals[row.key][field]}
-                                  onChange={e => handleQual(row.key, field, e.target.value)}
-                                  required={row.required && field !== 'board'}
-                                  min={field === 'passingYear' ? 1980 : undefined}
-                                  max={field === 'passingYear' ? new Date().getFullYear() : undefined}
-                                  placeholder={field === 'passingYear' ? 'YYYY' : '—'}
-                                  style={{ border: '1.5px solid #e2e8f0', borderRadius: '8px', background: 'white' }}
-                                  className="w-full px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all placeholder-gray-300 text-gray-700"
-                                />
-                              </td>
-                            ))}
+                            {(['degreeTitle','passingYear','obtainedMarks','totalMarks','board']).map(field => {
+                              const errKey = `q_${row.key}_${field}`;
+                              const hasErr = !!errors[errKey];
+                              return (
+                                <td key={field} className="px-2.5 py-2.5" style={{ borderTop: '1px solid rgba(4,20,118,0.06)', borderLeft: '1px solid rgba(4,20,118,0.06)' }}>
+                                  <input
+                                    type={field === 'passingYear' ? 'number' : 'text'}
+                                    value={quals[row.key][field]}
+                                    onChange={e => {
+                                      handleQual(row.key, field, e.target.value);
+                                      if (errors[errKey]) setErrors(p => ({ ...p, [errKey]: '' }));
+                                    }}
+                                    min={field === 'passingYear' ? 1980 : undefined}
+                                    max={field === 'passingYear' ? new Date().getFullYear() : undefined}
+                                    placeholder={field === 'passingYear' ? 'YYYY' : '—'}
+                                    title={hasErr ? errors[errKey] : undefined}
+                                    style={{ border: `1.5px solid ${hasErr ? '#f87171' : '#e2e8f0'}`, borderRadius: '8px', background: hasErr ? '#fff5f5' : 'white' }}
+                                    className="w-full px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all placeholder-gray-300 text-gray-700"
+                                  />
+                                  {hasErr && <p className="text-red-500 text-[10px] mt-0.5 leading-tight">{errors[errKey]}</p>}
+                                </td>
+                              );
+                            })}
                           </tr>
                         ))}
                       </tbody>
