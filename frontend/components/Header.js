@@ -72,9 +72,9 @@ export default function Header() {
         { label: 'All Programs',     href: '/programs' },
         { label: 'Science Programs', href: '/science-programs' },
         { label: 'Arts Programs',    href: '/arts-programs' },
+        { label: 'Facilities',       href: '/facilities' },
       ],
     },
-    { label: 'Facilities', href: '/facilities' },
     { label: 'Portal',     href: '/portal' },
     { label: 'Contact',             href: '/contact' },
   ];
