@@ -7,6 +7,9 @@ const GallerySchema = new mongoose.Schema({
   image:       { type: String, required: true },
   order:       { type: Number, default: 0 },
   published:   { type: Boolean, default: true },
+  month:       { type: Number, min: 1, max: 12, default: null },
+  year:        { type: Number, default: null },
+  program:     { type: String, trim: true, default: '' },
 }, { timestamps: true });
 
 module.exports = mongoose.model('Gallery', GallerySchema);

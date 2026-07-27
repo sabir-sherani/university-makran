@@ -3,11 +3,19 @@ import Head from 'next/head';
 import AdminHeader from '../../components/AdminHeader';
 import axios from 'axios';
 
-const API    = process.env.NEXT_PUBLIC_API_URL;
-const BASE   = API ? API.replace('/api', '') : 'http://localhost:5000';
+const API  = process.env.NEXT_PUBLIC_API_URL;
+const BASE = API ? API.replace('/api', '') : 'http://localhost:5000';
 
+const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const CURRENT_YEAR = new Date().getFullYear();
+const YEAR_OPTIONS = Array.from({ length: CURRENT_YEAR - 2014 }, (_, i) => CURRENT_YEAR - i);
+const CATEGORIES   = ['General', 'Campus', 'Events', 'Academic', 'Sports', 'Convocation', 'Faculty', 'Other'];
 
-const emptyForm = { title: '', description: '', category: 'General', order: 0, published: true, image: null };
+const emptyForm = {
+  title: '', description: '', category: 'General',
+  month: '', year: '', program: '',
+  order: 0, published: true, image: null,
+};
 
 export default function GalleryAdmin() {
   const [items, setItems]       = useState([]);
@@ -23,12 +31,15 @@ export default function GalleryAdmin() {
   const [bulkFiles, setBulkFiles]       = useState([]);
   const [bulkPreviews, setBulkPreviews] = useState([]);
   const [bulkCategory, setBulkCategory] = useState('General');
+  const [bulkMonth, setBulkMonth]       = useState('');
+  const [bulkYear, setBulkYear]         = useState('');
+  const [bulkProgram, setBulkProgram]   = useState('');
   const [bulkSaving, setBulkSaving]     = useState(false);
   const [bulkMsg, setBulkMsg]           = useState('');
   const bulkRef = useRef();
 
   // Drag-and-drop reorder state
-  const [dragIdx, setDragIdx]       = useState(null);
+  const [dragIdx, setDragIdx]         = useState(null);
   const [dragOverIdx, setDragOverIdx] = useState(null);
 
   useEffect(() => { fetchItems(); }, []);
@@ -90,10 +101,16 @@ export default function GalleryAdmin() {
       const fd = new FormData();
       bulkFiles.forEach(f => fd.append('images', f));
       fd.append('category', bulkCategory);
+      fd.append('month',    bulkMonth   || '');
+      fd.append('year',     bulkYear    || '');
+      fd.append('program',  bulkProgram || '');
       const res = await axios.post(`${API}/gallery/bulk`, fd);
       setBulkMsg(`✅ ${res.data.count} photo(s) uploaded successfully.`);
       setBulkFiles([]);
       setBulkPreviews([]);
+      setBulkMonth('');
+      setBulkYear('');
+      setBulkProgram('');
       if (bulkRef.current) bulkRef.current.value = '';
       fetchItems();
     } catch (err) {
@@ -102,9 +119,7 @@ export default function GalleryAdmin() {
     setBulkSaving(false);
   }
 
-  function onDragStart(idx) {
-    setDragIdx(idx);
-  }
+  function onDragStart(idx) { setDragIdx(idx); }
 
   function onDragOver(e, idx) {
     e.preventDefault();
@@ -116,21 +131,16 @@ export default function GalleryAdmin() {
     const reordered = [...items];
     const [moved] = reordered.splice(dragIdx, 1);
     reordered.splice(idx, 0, moved);
-    // assign order values by position
     const withOrder = reordered.map((item, i) => ({ ...item, order: i }));
     setItems(withOrder);
     setDragIdx(null);
     setDragOverIdx(null);
-    // persist to backend
     try {
       await axios.put(`${API}/gallery/reorder`, withOrder.map((item, i) => ({ id: item._id, order: i })));
-    } catch { /* silent — items already reordered locally */ }
+    } catch { /* silent */ }
   }
 
-  function onDragEnd() {
-    setDragIdx(null);
-    setDragOverIdx(null);
-  }
+  function onDragEnd() { setDragIdx(null); setDragOverIdx(null); }
 
   function startEdit(item) {
     setEditId(item._id);
@@ -138,11 +148,14 @@ export default function GalleryAdmin() {
       title:       item.title       || '',
       description: item.description || '',
       category:    item.category    || 'General',
+      month:       item.month       ?? '',
+      year:        item.year        ?? '',
+      program:     item.program     || '',
       order:       item.order       ?? 0,
       published:   item.published   !== false,
       image:       null,
     });
-    setPreview(item.image ? `${BASE}${item.image}` : '');
+    setPreview(item.image ? (item.image.startsWith('http') ? item.image : `${BASE}${item.image}`) : '');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
@@ -156,6 +169,9 @@ export default function GalleryAdmin() {
       fd.append('title',       formData.title);
       fd.append('description', formData.description);
       fd.append('category',    formData.category);
+      fd.append('month',       formData.month   || '');
+      fd.append('year',        formData.year    || '');
+      fd.append('program',     formData.program || '');
       fd.append('order',       formData.order);
       fd.append('published',   formData.published ? 'true' : 'false');
       if (formData.image) fd.append('image', formData.image);
@@ -183,8 +199,6 @@ export default function GalleryAdmin() {
     } catch { alert('Error deleting photo.'); }
   }
 
-  const categories = ['General', 'Campus', 'Events', 'Academic', 'Sports', 'Convocation', 'Faculty', 'Other'];
-
   return (
     <>
       <Head><title>Manage Gallery - Admin Dashboard</title></Head>
@@ -197,7 +211,7 @@ export default function GalleryAdmin() {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
 
-          {/* ── FORM ── */}
+          {/* ── SINGLE UPLOAD FORM ── */}
           <div className="lg:col-span-1">
             <div className="bg-white rounded-xl shadow-lg p-6 sticky top-6">
               <h3 className="text-lg font-bold text-primary mb-5">
@@ -246,8 +260,35 @@ export default function GalleryAdmin() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
                   <select name="category" value={formData.category} onChange={handleField} className="admin-input">
-                    {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                    {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
+                </div>
+
+                {/* Month + Year row */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Month</label>
+                    <select name="month" value={formData.month} onChange={handleField} className="admin-input">
+                      <option value="">-- No Month --</option>
+                      {MONTH_NAMES.map((m, i) => (
+                        <option key={i + 1} value={i + 1}>{m}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Year</label>
+                    <select name="year" value={formData.year} onChange={handleField} className="admin-input">
+                      <option value="">-- No Year --</option>
+                      {YEAR_OPTIONS.map(y => <option key={y} value={y}>{y}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Program */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Program</label>
+                  <input name="program" value={formData.program} onChange={handleField}
+                    placeholder="e.g. Computer Science (optional)" className="admin-input" />
                 </div>
 
                 {/* Order */}
@@ -304,10 +345,35 @@ export default function GalleryAdmin() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
                   <select value={bulkCategory} onChange={e => setBulkCategory(e.target.value)} className="admin-input">
-                    {['General','Campus','Events','Academic','Sports','Convocation','Faculty','Other'].map(c => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
+                    {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
+                </div>
+
+                {/* Month + Year row */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Month</label>
+                    <select value={bulkMonth} onChange={e => setBulkMonth(e.target.value)} className="admin-input">
+                      <option value="">-- No Month --</option>
+                      {MONTH_NAMES.map((m, i) => (
+                        <option key={i + 1} value={i + 1}>{m}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Year</label>
+                    <select value={bulkYear} onChange={e => setBulkYear(e.target.value)} className="admin-input">
+                      <option value="">-- No Year --</option>
+                      {YEAR_OPTIONS.map(y => <option key={y} value={y}>{y}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Program */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Program</label>
+                  <input value={bulkProgram} onChange={e => setBulkProgram(e.target.value)}
+                    placeholder="e.g. Computer Science (optional)" className="admin-input" />
                 </div>
 
                 {/* Preview grid */}
@@ -378,14 +444,21 @@ export default function GalleryAdmin() {
                           transition: 'opacity 0.15s, box-shadow 0.15s, border-color 0.15s',
                         }}>
 
-                        <img src={`${BASE}${item.image}`} alt={item.title || 'Gallery'}
+                        <img src={item.image?.startsWith('http') ? item.image : `${BASE}${item.image}`}
+                          alt={item.title || 'Gallery'}
                           className="w-full h-full object-cover pointer-events-none" />
 
-                        {/* Drag handle dot-grid */}
+                        {/* Drag handle */}
                         <div className="absolute top-1.5 left-1.5 opacity-0 group-hover:opacity-100 transition-opacity"
                           style={{ background: 'rgba(0,0,0,0.45)', borderRadius: 4, padding: '1px 4px', color: '#fff', fontSize: 11, lineHeight: 1.6, letterSpacing: 1, userSelect: 'none' }}>
                           ⠿
                         </div>
+
+                        {/* Month/Year badge */}
+                        {item.month && item.year && (
+                          <div className="absolute top-1.5 left-1.5 opacity-0 group-hover:opacity-0"
+                            style={{ /* hidden on hover since drag handle shows */ }} />
+                        )}
 
                         {/* Action overlay */}
                         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/55 transition-all duration-200 flex flex-col items-center justify-center gap-1.5 opacity-0 group-hover:opacity-100">
@@ -399,12 +472,24 @@ export default function GalleryAdmin() {
                           </button>
                         </div>
 
-                        {item.title && (
-                          <div className="absolute bottom-0 left-0 right-0 px-2 py-1 text-xs text-white font-medium truncate"
-                            style={{ background: 'linear-gradient(to top,rgba(0,0,0,0.7),transparent)' }}>
-                            {item.title}
-                          </div>
-                        )}
+                        {/* Meta labels */}
+                        <div className="absolute bottom-0 left-0 right-0"
+                          style={{ background: 'linear-gradient(to top,rgba(0,0,0,0.7),transparent)', padding: '14px 6px 4px' }}>
+                          {item.title && (
+                            <p className="text-white text-xs font-medium truncate">{item.title}</p>
+                          )}
+                          {(item.month && item.year) && (
+                            <p className="text-xs truncate" style={{ color: '#FA7902', fontWeight: 600, fontSize: 10 }}>
+                              {MONTH_NAMES[item.month - 1]} {item.year}
+                            </p>
+                          )}
+                          {item.program && (
+                            <p className="text-xs truncate" style={{ color: 'rgba(255,255,255,0.6)', fontSize: 9 }}>
+                              {item.program}
+                            </p>
+                          )}
+                        </div>
+
                         {!item.published && (
                           <div className="absolute top-1.5 right-1.5">
                             <span className="text-xs bg-yellow-400 text-yellow-900 px-1.5 py-0.5 rounded font-bold">Draft</span>

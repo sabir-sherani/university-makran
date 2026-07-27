@@ -1,6 +1,8 @@
 const express = require('express');
 const router  = express.Router();
 const multer  = require('multer');
+const path    = require('path');
+const fs      = require('fs');
 const Gallery = require('../models/Gallery');
 const { createStorage } = require('../utils/cloudinary');
 
@@ -52,14 +54,20 @@ router.post('/bulk', handleBulkUpload, async (req, res) => {
 
     const category  = req.body.category  || 'General';
     const published = req.body.published !== 'false';
+    const month     = req.body.month  ? Number(req.body.month)  : null;
+    const year      = req.body.year   ? Number(req.body.year)   : null;
+    const program   = req.body.program || '';
 
     const docs = req.files.map(file => ({
-      title:    '',
+      title: '',
       description: '',
       category,
       image:    file.path,
       order:    0,
       published,
+      month,
+      year,
+      program,
     }));
 
     const saved = await Gallery.insertMany(docs);
@@ -80,6 +88,9 @@ router.post('/', handleUpload, async (req, res) => {
       image:       req.file.path,
       order:       Number(req.body.order) || 0,
       published:   req.body.published !== 'false',
+      month:       req.body.month  ? Number(req.body.month)  : null,
+      year:        req.body.year   ? Number(req.body.year)   : null,
+      program:     req.body.program || '',
     }).save();
     res.status(201).json(item);
   } catch (err) {
@@ -113,11 +124,13 @@ router.put('/:id', handleUpload, async (req, res) => {
       category:    req.body.category    || existing.category,
       order:       req.body.order       !== undefined ? Number(req.body.order) : existing.order,
       published:   req.body.published   !== undefined ? req.body.published !== 'false' : existing.published,
+      month:       req.body.month  !== undefined ? (req.body.month  ? Number(req.body.month)  : null) : existing.month,
+      year:        req.body.year   !== undefined ? (req.body.year   ? Number(req.body.year)   : null) : existing.year,
+      program:     req.body.program !== undefined ? req.body.program : existing.program,
       image:       existing.image,
     };
 
     if (req.file) {
-      // delete old file
       const oldPath = path.join(__dirname, '../public', existing.image);
       if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
       data.image = req.file.path;
