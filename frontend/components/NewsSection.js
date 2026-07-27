@@ -1,25 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import axios from 'axios';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
-const BASE_URL = API_URL.replace('/api', '');
-
-// ── helpers ───────────────────────────────────────────────────────────────────
-
-function resolveLink(item) {
-  if (item.linkType === 'document' && item.document) return { href: item.document?.startsWith('http') ? item.document : `${BASE_URL}${item.document}`, external: true };
-  if (item.linkType === 'internal' && item.linkUrl)  return { href: item.linkUrl, external: false };
-  if (item.linkType === 'external' && item.linkUrl)  return { href: item.linkUrl, external: true };
-  // No link, document, or meaningful URL → fall back to news page
-  return { href: '/news', external: false };
-}
-
-function fmtDate(dateStr) {
-  const d = new Date(dateStr);
-  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-}
 
 // ── sub-components ────────────────────────────────────────────────────────────
 
@@ -50,97 +30,6 @@ function CardHeader({ icon, title, accent = '#041476', action }) {
       </div>
       {action}
     </div>
-  );
-}
-
-// ── News list ─────────────────────────────────────────────────────────────────
-
-function NewsTicker({ news, loading }) {
-  return (
-    <SectionCard accent="#041476">
-      <CardHeader
-        icon="📰"
-        title="Latest News"
-        accent="#041476"
-        action={
-          <Link href="/news" className="text-xs font-semibold hover:underline transition-colors" style={{ color: '#041476' }}>
-            View All →
-          </Link>
-        }
-      />
-
-      <div className="flex-1 min-h-0 overflow-y-auto news-scroll">
-        {loading ? (
-          <div className="px-5 py-4 space-y-5">
-            {[...Array(4)].map((_, i) => (
-              <div key={i} className="animate-pulse flex gap-4">
-                <div className="w-12 shrink-0 space-y-1">
-                  <div className="h-3 bg-gray-100 rounded w-full" />
-                  <div className="h-6 bg-gray-200 rounded w-full" />
-                  <div className="h-3 bg-gray-100 rounded w-full" />
-                </div>
-                <div className="flex-1 space-y-2 pt-1">
-                  <div className="h-4 bg-gray-200 rounded w-full" />
-                  <div className="h-3 bg-gray-100 rounded w-4/5" />
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : news.length === 0 ? (
-          <div className="flex items-center justify-center h-32 text-gray-400 text-sm px-5 text-center">
-            No news items yet.
-          </div>
-        ) : (
-          <div>
-            {news.map((item) => {
-              const { href, external } = resolveLink(item);
-              const d = new Date(item.date);
-              const day   = d.toLocaleDateString('en-GB', { day: '2-digit' });
-              const month = d.toLocaleDateString('en-GB', { month: 'short' });
-              const year  = d.getFullYear();
-
-              const TitleEl = ({ children, style, ...rest }) =>
-                external
-                  ? <a href={href} target="_blank" rel="noopener noreferrer" style={style} {...rest}>{children}</a>
-                  : <Link href={href} style={style} {...rest}>{children}</Link>;
-
-              return (
-                <div key={item._id} className="news-item flex gap-0 border-b border-gray-100 last:border-0"
-                  style={{ padding: '14px 16px 14px 14px' }}>
-
-                  {/* Date column */}
-                  <div className="shrink-0 text-center pr-3" style={{ width: 52 }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: '#FA7902', display: 'block', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{month}</span>
-                    <span style={{ fontSize: 26, fontWeight: 800, color: '#041476', lineHeight: 1.1, display: 'block' }}>{day}</span>
-                    <span style={{ fontSize: 11, color: '#94a3b8', display: 'block' }}>{year}</span>
-                  </div>
-
-                  {/* Blue accent bar */}
-                  <div className="shrink-0 mr-3" style={{ width: 3, borderRadius: 4, background: 'linear-gradient(to bottom, #041476, rgba(4,20,118,0.15))', alignSelf: 'stretch' }} />
-
-                  {/* Content */}
-                  <div className="flex-1 min-w-0">
-                    <TitleEl
-                      className="news-title block font-bold leading-snug line-clamp-2"
-                      style={{ fontSize: 13.5, color: '#041476', textDecoration: 'none', marginBottom: item.description ? 4 : 0, transition: 'color 0.15s' }}
-                      onMouseEnter={e => e.currentTarget.style.color = '#FA7902'}
-                      onMouseLeave={e => e.currentTarget.style.color = '#041476'}
-                    >
-                      {item.title}
-                    </TitleEl>
-                    {item.description && (
-                      <p className="text-xs leading-relaxed line-clamp-2" style={{ color: '#64748b' }}>
-                        {item.description}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </SectionCard>
   );
 }
 
@@ -329,17 +218,6 @@ function VCCard() {
 // ── Main section ──────────────────────────────────────────────────────────────
 
 export default function NewsSection() {
-  const [news, setNews]     = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    axios
-      .get(`${API_URL}/news`)
-      .then((res) => setNews(res.data || []))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
-
   return (
     <section className="py-16" style={{ background: '#F4F6FB' }}>
       <div className="container">
@@ -348,10 +226,10 @@ export default function NewsSection() {
         <div className="flex items-end justify-between mb-8">
           <div>
             <p className="text-xs font-bold uppercase tracking-widest mb-1" style={{ color: '#041476' }}>
-              University Updates
+              University at a Glance
             </p>
             <h2 className="text-2xl md:text-3xl font-bold text-gray-900">
-              News &amp; Information
+              Mission, Vision &amp; Leadership
             </h2>
             <div className="mt-2.5 flex gap-1.5">
               <span className="h-1 w-10 rounded-full" style={{ background: '#041476' }} />
@@ -361,26 +239,24 @@ export default function NewsSection() {
           </div>
         </div>
 
-        {/* 4-column grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5" style={{ gridAutoRows: '520px' }}>
-          <NewsTicker news={news} loading={loading} />
+        {/* 3-column grid — stacks on mobile, 2-col on md, 3-col on lg */}
+        <div className="info-grid grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           <MissionCard />
           <VisionCard />
-          <VCCard />
+          {/* VC card spans both columns on md so it's centered below Mission+Vision */}
+          <div className="md:col-span-2 lg:col-span-1 flex flex-col">
+            <VCCard />
+          </div>
         </div>
       </div>
 
       <style jsx global>{`
-        .news-scroll {
-          scrollbar-width: thin;
-          scrollbar-color: #c7d0e8 transparent;
+        @media (min-width: 1024px) {
+          .info-grid { grid-auto-rows: 520px; }
         }
-        .news-scroll::-webkit-scrollbar { width: 5px; }
-        .news-scroll::-webkit-scrollbar-track { background: transparent; }
-        .news-scroll::-webkit-scrollbar-thumb { background: #c7d0e8; border-radius: 99px; }
-        .news-scroll::-webkit-scrollbar-thumb:hover { background: #041476; }
-        .news-item { transition: background 0.15s; }
-        .news-item:hover { background: #f8f9ff; }
+        @media (min-width: 768px) and (max-width: 1023px) {
+          .info-grid { grid-auto-rows: 500px; }
+        }
       `}</style>
     </section>
   );
