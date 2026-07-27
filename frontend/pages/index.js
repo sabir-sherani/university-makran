@@ -6,6 +6,7 @@ import About from '../components/About';
 import Programs from '../components/Programs';
 import AdmissionBanner from '../components/AdmissionBanner';
 import NewsSection from '../components/NewsSection';
+import GallerySlideshow from '../components/GallerySlideshow';
 import Hero from '../components/Hero';
 
 export default function Home() {
@@ -25,6 +26,7 @@ export default function Home() {
       <About />
       <Programs />
       <AdmissionBanner />
+      <GallerySlideshow />
       <NewsSection />
       <Footer />
     </>
