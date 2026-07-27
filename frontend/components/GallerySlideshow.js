@@ -194,7 +194,7 @@ export default function GallerySlideshow() {
                   📢
                 </span>
                 <h3 style={{ fontSize: 13, fontWeight: 800, color: '#041476', textTransform: 'uppercase', letterSpacing: '0.1em', margin: 0 }}>
-                  Latest Updates
+                  Latest News &amp; Updates
                 </h3>
               </div>
               <a
@@ -270,13 +270,11 @@ export default function GallerySlideshow() {
             {/* Footer link */}
             <div style={{ padding: '10px 16px', borderTop: '1px solid #f1f5f9', flexShrink: 0, background: '#f8faff' }}>
               <a
-                href="/gallery"
-                target="_blank"
-                rel="noopener noreferrer"
+                href="/news"
                 className="gallery-footer-btn"
                 style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, textDecoration: 'none', fontSize: 12, fontWeight: 700, color: '#041476', padding: '9px 0', borderRadius: 10, transition: 'all 0.18s', border: '1.5px solid rgba(4,20,118,0.15)' }}
               >
-                🖼️ &nbsp;View Full Gallery ↗
+                📰 &nbsp;View All News ↗
               </a>
             </div>
           </div>
