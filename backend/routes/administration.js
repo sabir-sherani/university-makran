@@ -8,7 +8,7 @@ router.get('/staff', async (req, res) => {
     const staff = await Employee.find({ designation: { $in: ['Vice Chancellor', 'Registrar', 'Finance Director', 'Dean of Students'] } });
     res.json(staff);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.sendServerError(error);
   }
 });
 

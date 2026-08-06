@@ -8,7 +8,7 @@ router.get('/', async (req, res) => {
     const messages = await Contact.find().sort({ createdAt: -1 });
     res.json(messages);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 
@@ -18,7 +18,7 @@ router.get('/unread-count', async (req, res) => {
     const count = await Contact.countDocuments({ read: false });
     res.json({ count });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 
@@ -43,7 +43,7 @@ router.put('/mark-all-read', async (req, res) => {
     await Contact.updateMany({ read: false }, { read: true });
     res.json({ message: 'All messages marked as read' });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 
@@ -64,7 +64,7 @@ router.delete('/:id', async (req, res) => {
     await Contact.findByIdAndDelete(req.params.id);
     res.json({ message: 'Message deleted' });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 

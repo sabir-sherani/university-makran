@@ -119,7 +119,7 @@ function DetailPanel({ student, onClose, onStatusChange, onAcademicChange }) {
         {/* Academic info editor */}
         <div className="px-6 py-4 border-t border-gray-100 bg-blue-50 space-y-3">
           <p className="text-xs font-bold text-blue-700 uppercase tracking-wider">Edit Academic Info</p>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-gray-500 font-semibold block mb-1">Roll No</label>
               <input value={acad.rollNo} onChange={e => setAcad(a => ({ ...a, rollNo: e.target.value }))}
@@ -176,6 +176,8 @@ function DetailPanel({ student, onClose, onStatusChange, onAcademicChange }) {
   );
 }
 
+const PAGE_SIZE = 20;
+
 export default function StudentsPage() {
   const router = useRouter();
   const [students, setStudents]     = useState([]);
@@ -186,6 +188,19 @@ export default function StudentsPage() {
   const [msg, setMsg]               = useState({ text: '', type: '' });
   const [detail, setDetail]         = useState(null);
   const [actingId, setActingId]     = useState(null);
+
+  // Pagination
+  const [page, setPage]   = useState(1);
+  const [pages, setPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [routerReady, setRouterReady] = useState(false);
+
+  // Honor a ?status= query param from quick links (e.g. dashboard "Pending Student Approvals")
+  useEffect(() => {
+    if (!router.isReady) return;
+    if (typeof router.query.status === 'string') setStatus(router.query.status);
+    setRouterReady(true);
+  }, [router.isReady]);
 
   // Advance semester state
   const [advOpen, setAdvOpen]           = useState(false);
@@ -201,15 +216,18 @@ export default function StudentsPage() {
 
   const flash = (text, type = 'success') => { setMsg({ text, type }); setTimeout(() => setMsg({ text: '', type: '' }), 4000); };
 
-  const load = useCallback(async (q = {}) => {
+  const load = useCallback(async (q = {}, pageNum = 1) => {
     setLoading(true);
     try {
-      const params = new URLSearchParams();
-      if (q.search) params.set('search', q.search);
-      if (q.status) params.set('status', q.status);
-      if (q.department) params.set('department', q.department);
-      const { data } = await axios.get(`${API}/portal/admin/students${params.toString() ? '?' + params : ''}`, authHeaders());
-      setStudents(data || []);
+      const params = { page: pageNum, limit: PAGE_SIZE };
+      if (q.search) params.search = q.search;
+      if (q.status) params.status = q.status;
+      if (q.department) params.department = q.department;
+      const { data } = await axios.get(`${API}/portal/admin/students`, { ...authHeaders(), params });
+      setStudents(data.data || []);
+      setTotal(data.total || 0);
+      setPages(data.pages || 1);
+      setPage(data.page || 1);
     } catch (err) {
       if (err.response?.status === 401 || err.response?.status === 403) {
         localStorage.removeItem('adminToken');
@@ -221,7 +239,9 @@ export default function StudentsPage() {
     setLoading(false);
   }, [router]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (routerReady) load({ search, status: filterStatus, department: filterDept }, 1);
+  }, [routerReady]);
 
   async function handleStatusChange(id, status) {
     try {
@@ -244,15 +264,19 @@ export default function StudentsPage() {
     try {
       await axios.delete(`${API}/portal/admin/students/${id}`, authHeaders());
       flash('Student deleted.');
-      setStudents(prev => prev.filter(s => s._id !== id));
       if (detail?._id === id) setDetail(null);
+      load({ search, status: filterStatus, department: filterDept }, page);
     } catch (err) { flash(err.response?.data?.message || 'Delete failed.', 'error'); }
     setActingId(null);
   }
 
   function handleSearch(e) {
     e.preventDefault();
-    load({ search, status: filterStatus, department: filterDept });
+    load({ search, status: filterStatus, department: filterDept }, 1);
+  }
+
+  function goToPage(p) {
+    load({ search, status: filterStatus, department: filterDept }, p);
   }
 
   async function handleAdvancePreview() {
@@ -297,18 +321,10 @@ export default function StudentsPage() {
       setAdvPreview(null); setAdvStudents([]); setAdvSelected({}); setAdvConfirmed(false);
       setAdvDept(''); setAdvSession(''); setAdvSemester('1');
       setAdvOpen(false);
-      load();
+      load({ search, status: filterStatus, department: filterDept }, page);
     } catch (err) { flash(err.response?.data?.message || 'Advance failed.', 'error'); }
     setAdvancing(false);
   }
-
-  const counts = {
-    all:       students.length,
-    pending:   students.filter(s => s.status === 'pending').length,
-    approved:  students.filter(s => s.status === 'approved').length,
-    rejected:  students.filter(s => s.status === 'rejected').length,
-    suspended: students.filter(s => s.status === 'suspended').length,
-  };
 
   return (
     <div className="flex min-h-screen bg-gray-50">
@@ -323,16 +339,6 @@ export default function StudentsPage() {
           </div>
 
           <Flash msg={msg.text} type={msg.type} />
-
-          {/* Stats row */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
-            {[['Total', counts.all, 'bg-blue-50 border-blue-100 text-blue-700'], ['Pending', counts.pending, 'bg-yellow-50 border-yellow-100 text-yellow-700'], ['Approved', counts.approved, 'bg-green-50 border-green-100 text-green-700'], ['Rejected', counts.rejected, 'bg-red-50 border-red-100 text-red-700'], ['Suspended', counts.suspended, 'bg-gray-50 border-gray-100 text-gray-600']].map(([label, val, cls]) => (
-              <div key={label} className={`rounded-2xl border p-4 ${cls}`}>
-                <p className="text-xs font-bold uppercase tracking-wider opacity-70">{label}</p>
-                <p className="text-2xl font-black mt-1">{val}</p>
-              </div>
-            ))}
-          </div>
 
           {/* Filters */}
           <form onSubmit={handleSearch} className="flex gap-3 mb-6 flex-wrap bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
@@ -351,19 +357,22 @@ export default function StudentsPage() {
               placeholder="Department…"
               className="w-44 px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-500" />
             <button type="submit" className="px-6 py-2.5 text-white font-bold rounded-xl text-sm hover:opacity-90 transition" style={{ background: '#041476' }}>Search</button>
-            <button type="button" onClick={() => { setSearch(''); setStatus(''); setDept(''); load(); }}
+            <button type="button" onClick={() => { setSearch(''); setStatus(''); setDept(''); load({}, 1); }}
               className="px-4 py-2.5 border border-gray-200 text-gray-600 font-medium rounded-xl text-sm hover:bg-gray-50 transition">Reset</button>
           </form>
 
           {/* Quick status filter pills */}
-          <div className="flex gap-2 mb-5 flex-wrap">
-            {[['', 'All'], ['pending', 'Pending'], ['approved', 'Approved'], ['rejected', 'Rejected'], ['suspended', 'Suspended']].map(([val, lbl]) => (
-              <button key={val} onClick={() => { setStatus(val); load({ search, status: val, department: filterDept }); }}
-                className={`px-4 py-1.5 rounded-full text-xs font-bold border transition ${filterStatus === val ? 'text-white border-primary' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
-                style={filterStatus === val ? { background: '#041476' } : {}}>
-                {lbl}
-              </button>
-            ))}
+          <div className="flex items-center justify-between mb-5 flex-wrap gap-2">
+            <div className="flex gap-2 flex-wrap">
+              {[['', 'All'], ['pending', 'Pending'], ['approved', 'Approved'], ['rejected', 'Rejected'], ['suspended', 'Suspended']].map(([val, lbl]) => (
+                <button key={val} onClick={() => { setStatus(val); load({ search, status: val, department: filterDept }, 1); }}
+                  className={`px-4 py-1.5 rounded-full text-xs font-bold border transition ${filterStatus === val ? 'text-white border-primary' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+                  style={filterStatus === val ? { background: '#041476' } : {}}>
+                  {lbl}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-gray-400">{total} student{total !== 1 ? 's' : ''} matching filters</p>
           </div>
 
           {/* Table */}
@@ -441,8 +450,18 @@ export default function StudentsPage() {
                     ))}
                   </tbody>
                 </table>
-                <div className="px-5 py-3 border-t border-gray-50 bg-gray-50">
-                  <p className="text-xs text-gray-400">Showing {students.length} student record{students.length !== 1 ? 's' : ''}</p>
+                <div className="flex items-center justify-between px-5 py-3 border-t border-gray-50 bg-gray-50">
+                  <p className="text-xs text-gray-400">Page {page} of {pages} · {total} total</p>
+                  <div className="flex gap-2">
+                    <button disabled={page <= 1} onClick={() => goToPage(page - 1)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-600 border border-gray-200 disabled:opacity-40 hover:bg-gray-50 transition-colors">
+                      ← Prev
+                    </button>
+                    <button disabled={page >= pages} onClick={() => goToPage(page + 1)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-600 border border-gray-200 disabled:opacity-40 hover:bg-gray-50 transition-colors">
+                      Next →
+                    </button>
+                  </div>
                 </div>
               </div>
             )}

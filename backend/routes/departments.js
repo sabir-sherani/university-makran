@@ -6,9 +6,10 @@ const fs      = require('fs');
 const Department    = require('../models/Department');
 const SuspensionOtp = require('../models/SuspensionOtp');
 const { sendSuspensionOtpEmail } = require('../utils/mailer');
+const { isDuplicateKeyError, duplicateKeyMessage } = require('../utils/duplicateKey');
 
-const { createStorage } = require('../utils/cloudinary');
-const upload = multer({ storage: createStorage('departments', ['jpg', 'jpeg', 'png', 'webp']) });
+const { createUpload } = require('../utils/cloudinary');
+const upload = createUpload('departments', ['jpg', 'jpeg', 'png', 'webp']);
 
 const deptUpload = upload.fields([
   { name: 'bannerImage', maxCount: 1 },
@@ -133,7 +134,7 @@ router.get('/', async (req, res) => {
       .sort('name');
     res.json(depts);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 
@@ -145,7 +146,7 @@ router.get('/trash', async (req, res) => {
       .sort({ deletedAt: -1 });
     res.json(depts);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 
@@ -157,7 +158,7 @@ router.get('/slug/:slug', async (req, res) => {
     if (dept.suspended) return res.status(403).json({ message: 'Department is currently suspended.', suspended: true });
     res.json(dept);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 
@@ -186,7 +187,7 @@ router.post('/:id/suspend-otp', async (req, res) => {
 
     res.json({ message: `OTP sent to ${adminEmail}` });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 
@@ -215,7 +216,7 @@ router.patch('/:id/suspend', async (req, res) => {
     const dept = await Department.findByIdAndUpdate(req.params.id, { suspended }, { new: true });
     res.json({ message: `Department ${suspended ? 'suspended' : 'unsuspended'} successfully.`, dept });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 
@@ -226,7 +227,7 @@ router.get('/:id', async (req, res) => {
     if (!dept) return res.status(404).json({ message: 'Department not found' });
     res.json(dept);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 
@@ -238,6 +239,7 @@ router.post('/', deptUpload, async (req, res) => {
     const saved = await dept.save();
     res.status(201).json(saved);
   } catch (err) {
+    if (isDuplicateKeyError(err)) return res.status(400).json({ message: duplicateKeyMessage(err) });
     res.status(400).json({ message: err.message });
   }
 });
@@ -251,6 +253,7 @@ router.put('/:id', deptUpload, async (req, res) => {
     const dept = await Department.findByIdAndUpdate(req.params.id, data, { new: true });
     res.json(dept);
   } catch (err) {
+    if (isDuplicateKeyError(err)) return res.status(400).json({ message: duplicateKeyMessage(err) });
     res.status(400).json({ message: err.message });
   }
 });
@@ -261,7 +264,7 @@ router.patch('/:id/restore', async (req, res) => {
     await Department.findByIdAndUpdate(req.params.id, { deletedAt: null });
     res.json({ message: 'Department restored' });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 
@@ -271,7 +274,7 @@ router.delete('/:id/permanent', async (req, res) => {
     await Department.findByIdAndDelete(req.params.id);
     res.json({ message: 'Department permanently deleted' });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 
@@ -281,7 +284,7 @@ router.delete('/:id', async (req, res) => {
     await Department.findByIdAndUpdate(req.params.id, { deletedAt: new Date() });
     res.json({ message: 'Department moved to trash' });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 

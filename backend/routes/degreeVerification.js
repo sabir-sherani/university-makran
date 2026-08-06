@@ -18,7 +18,7 @@ router.post('/', async (req, res) => {
       status: 'Valid'
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.sendServerError(error);
   }
 });
 

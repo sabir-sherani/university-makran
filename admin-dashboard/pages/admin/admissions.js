@@ -183,7 +183,7 @@ export default function AdminAdmissions() {
                       placeholder="Brief description or body text" className="admin-input" />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Announcement Date</label>
                       <input name="date" type="date" value={noticeForm.date}

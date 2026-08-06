@@ -7,9 +7,13 @@ const FeeItemSchema = new mongoose.Schema({
 
 const FeeStructureSchema = new mongoose.Schema({
   program:         { type: String, required: true },
+  programId:       { type: mongoose.Schema.Types.ObjectId, ref: 'Program' },
   department:      { type: String, default: '' },
+  departmentId:    { type: mongoose.Schema.Types.ObjectId, ref: 'Department' },
   semester:        { type: String, required: true },
+  semesterId:      { type: mongoose.Schema.Types.ObjectId, ref: 'Semester' },
   academicSession: { type: String, default: '' },
+  sessionId:       { type: mongoose.Schema.Types.ObjectId, ref: 'AcademicSession' },
   feeItems:        [FeeItemSchema],
   totalAmount:     { type: Number, required: true, min: 0 },
   dueDate:         Date,

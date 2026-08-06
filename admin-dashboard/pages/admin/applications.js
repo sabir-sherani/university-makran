@@ -389,10 +389,10 @@ export default function Applications() {
 
           {/* Bulk action bar */}
           {selectedCount > 0 && (
-            <div className="px-5 py-3 bg-primary/5 border-b border-primary/10 flex items-center justify-between">
+            <div className="px-5 py-3 bg-primary/5 border-b border-primary/10 flex flex-wrap items-center justify-between gap-2">
               <p className="text-sm font-semibold text-primary">{selectedCount} application{selectedCount > 1 ? 's' : ''} selected</p>
               <button onClick={deleteSelected} disabled={deleting}
-                className="flex items-center gap-2 px-4 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-lg transition-colors">
+                className="flex items-center gap-2 px-4 py-1.5 min-h-11 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-lg transition-colors">
                 {deleting ? 'Deleting...' : `🗑️ Delete Selected (${selectedCount})`}
               </button>
             </div>

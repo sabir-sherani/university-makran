@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const SemesterCourse = require('../models/SemesterCourse');
+const { isDuplicateKeyError, duplicateKeyMessage } = require('../utils/duplicateKey');
 
 // GET /api/courses?program=id
 router.get('/', async (req, res) => {
@@ -9,7 +10,7 @@ router.get('/', async (req, res) => {
     const courses = await SemesterCourse.find(filter).sort('semesterNumber');
     res.json(courses);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 
@@ -27,6 +28,7 @@ router.post('/', async (req, res) => {
     );
     res.status(201).json(semester);
   } catch (err) {
+    if (isDuplicateKeyError(err)) return res.status(400).json({ message: duplicateKeyMessage(err) });
     res.status(400).json({ message: err.message });
   }
 });
@@ -37,7 +39,7 @@ router.delete('/:id', async (req, res) => {
     await SemesterCourse.findByIdAndDelete(req.params.id);
     res.json({ message: 'Semester deleted' });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 

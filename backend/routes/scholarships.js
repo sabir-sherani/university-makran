@@ -8,7 +8,7 @@ router.get('/', async (req, res) => {
     const docs = await Scholarship.find().sort({ serialNo: 1, createdAt: 1 });
     res.json(docs);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 
@@ -49,7 +49,7 @@ router.delete('/:id', async (req, res) => {
     await Scholarship.findByIdAndDelete(req.params.id);
     res.json({ message: 'Deleted' });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 

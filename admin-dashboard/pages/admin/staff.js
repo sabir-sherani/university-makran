@@ -24,7 +24,7 @@ const STATUS_BADGE = {
 };
 
 function emptyForm(tab) {
-  return { fullName: '', email: '', password: '', phone: '', cnic: '', designation: '', department: '', section: '', [tab.idField]: '' };
+  return { fullName: '', email: '', password: '', phone: '', cnic: '', designationId: '', departmentId: '', section: '', [tab.idField]: '' };
 }
 
 function Flash({ msg }) {
@@ -46,10 +46,14 @@ function authHeaders() {
   return { headers: { Authorization: `Bearer ${getToken()}` } };
 }
 
+const PAGE_SIZE = 20;
+const EMPTY_PAGINATION = { page: 1, pages: 1, total: 0 };
+
 export default function StaffManagement() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState('hod');
   const [staff, setStaff]         = useState({ hod: [], exam: [], finance: [] });
+  const [pagination, setPagination] = useState({ hod: EMPTY_PAGINATION, exam: EMPTY_PAGINATION, finance: EMPTY_PAGINATION });
   const [loading, setLoading]     = useState({ hod: false, exam: false, finance: false });
   const [form, setForm]           = useState(emptyForm(TABS[0]));
   const [editId, setEditId]       = useState(null);
@@ -57,6 +61,8 @@ export default function StaffManagement() {
   const [msg, setMsg]             = useState('');
   const [showForm, setShowForm]   = useState(false);
   const [showPw, setShowPw]       = useState(false);
+  const [departments, setDepartments] = useState([]);
+  const [designations, setDesignations] = useState([]);
 
   const tab = TABS.find(t => t.key === activeTab);
 
@@ -67,13 +73,19 @@ export default function StaffManagement() {
     }
   }, []);
 
-  useEffect(() => { loadStaff(activeTab); }, [activeTab]);
+  useEffect(() => { loadStaff(activeTab, 1); }, [activeTab]);
 
-  async function loadStaff(role) {
+  useEffect(() => {
+    axios.get(`${API}/lookups/departments`).then(({ data }) => setDepartments(data)).catch(() => {});
+    axios.get(`${API}/lookups/designations`).then(({ data }) => setDesignations(data)).catch(() => {});
+  }, []);
+
+  async function loadStaff(role, pageNum = 1) {
     setLoading(p => ({ ...p, [role]: true }));
     try {
-      const { data } = await axios.get(`${API}/portal/admin/staff/${role}`, authHeaders());
-      setStaff(p => ({ ...p, [role]: data }));
+      const { data } = await axios.get(`${API}/portal/admin/staff/${role}`, { ...authHeaders(), params: { page: pageNum, limit: PAGE_SIZE } });
+      setStaff(p => ({ ...p, [role]: data.data || [] }));
+      setPagination(p => ({ ...p, [role]: { page: data.page || 1, pages: data.pages || 1, total: data.total || 0 } }));
     } catch { /* silent */ }
     setLoading(p => ({ ...p, [role]: false }));
   }
@@ -99,8 +111,8 @@ export default function StaffManagement() {
       password:    '',
       phone:       member.phone || '',
       cnic:        member.cnic || '',
-      designation: member.designation || '',
-      department:  member.department || '',
+      designationId: member.designationId || '',
+      departmentId:  member.departmentId || '',
       section:     member.section || '',
       [tab.idField]: member[tab.idField] || '',
     });
@@ -129,7 +141,7 @@ export default function StaffManagement() {
       }
       setShowForm(false);
       setEditId(null);
-      loadStaff(activeTab);
+      loadStaff(activeTab, editId ? pagination[activeTab].page : 1);
     } catch (err) {
       flash(err.response?.data?.message || 'Error saving account.');
     }
@@ -141,7 +153,7 @@ export default function StaffManagement() {
     try {
       await axios.delete(`${API}/portal/admin/staff/${activeTab}/${id}`, authHeaders());
       flash('Account deleted.');
-      loadStaff(activeTab);
+      loadStaff(activeTab, pagination[activeTab].page);
     } catch { flash('Error deleting account.'); }
   }
 
@@ -149,7 +161,7 @@ export default function StaffManagement() {
     const newStatus = member.status === 'active' ? 'inactive' : 'active';
     try {
       await axios.patch(`${API}/portal/admin/staff/${activeTab}/${member._id}`, { status: newStatus }, authHeaders());
-      loadStaff(activeTab);
+      loadStaff(activeTab, pagination[activeTab].page);
     } catch { flash('Error updating status.'); }
   }
 
@@ -169,18 +181,18 @@ export default function StaffManagement() {
         </div>
 
         {/* Role tabs */}
-        <div className="flex gap-2 mb-8 border-b border-gray-200">
+        <div className="flex gap-2 mb-8 border-b border-gray-200 overflow-x-auto">
           {TABS.map(t => (
             <button key={t.key}
               onClick={() => { setActiveTab(t.key); setShowForm(false); setMsg(''); }}
-              className={`px-5 py-2.5 text-sm font-semibold rounded-t-lg transition-colors -mb-px border-b-2 ${
+              className={`shrink-0 px-5 py-2.5 min-h-11 text-sm font-semibold rounded-t-lg transition-colors -mb-px border-b-2 ${
                 activeTab === t.key
                   ? 'border-primary text-primary bg-white'
                   : 'border-transparent text-gray-500 hover:text-primary'
               }`}>
               {t.label}
               <span className="ml-2 text-xs bg-gray-100 text-gray-500 rounded-full px-2 py-0.5">
-                {staff[t.key]?.length || 0}
+                {pagination[t.key]?.total || 0}
               </span>
             </button>
           ))}
@@ -273,9 +285,11 @@ export default function StaffManagement() {
 
                   <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Designation</label>
-                    <input name="designation" value={form.designation} onChange={handleField}
-                      placeholder={activeTab === 'hod' ? 'Head of Department' : activeTab === 'exam' ? 'Examination Officer' : 'Finance Officer'}
-                      className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary" />
+                    <select name="designationId" value={form.designationId} onChange={handleField}
+                      className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary">
+                      <option value="">Select designation</option>
+                      {designations.map(d => <option key={d._id} value={d._id}>{d.title}</option>)}
+                    </select>
                   </div>
 
                   {(activeTab === 'hod' || activeTab === 'finance') && (
@@ -283,9 +297,12 @@ export default function StaffManagement() {
                       <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">
                         Department {activeTab === 'hod' ? '*' : ''}
                       </label>
-                      <input name="department" value={form.department} onChange={handleField}
-                        required={activeTab === 'hod'} placeholder="e.g. CS & IT"
-                        className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary" />
+                      <select name="departmentId" value={form.departmentId} onChange={handleField}
+                        required={activeTab === 'hod'}
+                        className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary">
+                        <option value="">Select department</option>
+                        {departments.map(d => <option key={d._id} value={d._id}>{d.name}</option>)}
+                      </select>
                     </div>
                   )}
 
@@ -316,11 +333,11 @@ export default function StaffManagement() {
           {/* List panel */}
           <div className="lg:col-span-2">
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-              <div className="px-6 py-4 border-b border-gray-50 flex items-center justify-between">
-                <h3 className="font-bold text-primary text-base">{tab.label} ({list.length})</h3>
+              <div className="px-6 py-4 border-b border-gray-50 flex flex-wrap items-center justify-between gap-2">
+                <h3 className="font-bold text-primary text-base">{tab.label} ({pagination[activeTab]?.total || 0})</h3>
                 {!showForm && (
                   <button onClick={openCreate}
-                    className="flex items-center gap-1.5 px-4 py-2 bg-primary/10 text-primary text-xs font-bold rounded-lg hover:bg-primary/15 transition-colors">
+                    className="flex items-center gap-1.5 px-4 py-2 min-h-11 bg-primary/10 text-primary text-xs font-bold rounded-lg hover:bg-primary/15 transition-colors">
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
                     </svg>
@@ -390,6 +407,22 @@ export default function StaffManagement() {
                       </div>
                     </div>
                   ))}
+                </div>
+              )}
+
+              {pagination[activeTab]?.pages > 1 && (
+                <div className="flex items-center justify-between px-6 py-3 border-t border-gray-50 bg-gray-50">
+                  <p className="text-xs text-gray-400">Page {pagination[activeTab].page} of {pagination[activeTab].pages}</p>
+                  <div className="flex gap-2">
+                    <button disabled={pagination[activeTab].page <= 1} onClick={() => loadStaff(activeTab, pagination[activeTab].page - 1)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-600 border border-gray-200 disabled:opacity-40 hover:bg-gray-50 transition-colors">
+                      ← Prev
+                    </button>
+                    <button disabled={pagination[activeTab].page >= pagination[activeTab].pages} onClick={() => loadStaff(activeTab, pagination[activeTab].page + 1)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-600 border border-gray-200 disabled:opacity-40 hover:bg-gray-50 transition-colors">
+                      Next →
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

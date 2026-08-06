@@ -1,302 +1,160 @@
-# Deployment Guide
+# Deployment Guide — University of Makran, Panjgur
 
-## Production Deployment
+This repo is three separate apps that deploy independently:
 
-### Prerequisites
-- Node.js v16+ installed
-- MongoDB Atlas account (or MongoDB server)
-- Hosting service (Vercel, Heroku, AWS, DigitalOcean, etc.)
-- Domain name (optional but recommended)
+| App | Framework | Local port | Deploy target |
+|---|---|---|---|
+| `backend` | Express + Mongoose | 5000 | Railway (nixpacks) or any Node host (Procfile included for Heroku-style hosts) |
+| `frontend` | Next.js (public site + student/teacher/HOD/exam/finance portals) | 3000 | Vercel |
+| `admin-dashboard` | Next.js (admin panel) | 3001 | Vercel |
 
-## Frontend Deployment (Next.js)
+All three talk to each other only over HTTP — `frontend` and `admin-dashboard` call `backend`'s REST API at `NEXT_PUBLIC_API_URL`, and `backend` allows only the origins listed in `ALLOWED_ORIGINS` to call it. Get these two things wrong and nothing else in this guide matters, so they're covered first.
 
-### Deploy to Vercel (Recommended)
+## Prerequisites
 
-1. **Push to GitHub**
-   ```bash
-   git init
-   git add .
-   git commit -m "Initial commit"
-   git push origin main
-   ```
+- Node.js v18+ (v16 works but is past end-of-life; use v18/v20 if you have a choice)
+- A MongoDB Atlas cluster (or any reachable MongoDB 5+ instance)
+- A Cloudinary account (optional — see [File uploads](#file-uploads--cloudinary-optional) below)
+- A Gmail account with an App Password (for password-reset and contact-form email)
+- Vercel account (frontend + admin-dashboard)
+- Railway account, or any Node-capable host (backend)
 
-2. **Connect to Vercel**
-   - Go to https://vercel.com
-   - Click "New Project"
-   - Import your GitHub repository
-   - Select `frontend` as root directory
+## 1. Environment variables — complete reference
 
-3. **Set Environment Variables**
-   ```
-   NEXT_PUBLIC_API_URL=https://your-backend-domain.com/api
-   ```
+### `backend/.env`
 
-4. **Deploy**
-   - Vercel will auto-deploy on push
+| Variable | Required | Example | Notes |
+|---|---|---|---|
+| `MONGO_URI` | **Yes** | `mongodb+srv://user:pass@cluster.mongodb.net/university_makran` | Full Atlas (or self-hosted) connection string, database name included. |
+| `JWT_SECRET` | **Yes** | `openssl rand -hex 32` output | Long random string. Every portal's login token is signed with this — rotating it logs everyone out. |
+| `PORT` | No | `5000` | Most hosts (Railway, Heroku) inject this automatically; only set it yourself for local/self-hosted runs. |
+| `NODE_ENV` | Recommended | `production` | Controls error-detail verbosity — see `utils/sendError.js` (stack traces are hidden from API responses when this is `production`). |
+| `ALLOWED_ORIGINS` | **Yes in production** | `https://uomp.vercel.app,https://uomp-admin.vercel.app` | Comma-separated, **no trailing slashes, no spaces after commas needed** (they're trimmed). Falls back to `http://localhost:3000,http://localhost:3001` if unset — fine for local dev, **wrong for production** (every cross-origin request from the deployed frontends will be rejected by CORS until this is set correctly). |
+| `FRONTEND_URL` | Recommended | `https://uomp.vercel.app` | Used to build the link inside password-reset emails (`routes/studentPortal.js`). |
+| `GMAIL_USER` | For email features | `you@gmail.com` | Sender address for password-reset and contact-form mail. |
+| `GMAIL_APP_PASSWORD` | For email features | 16-char app password | **Not your Gmail login password.** Generate at Google Account → Security → 2-Step Verification → App passwords. Without this + `GMAIL_USER`, email sending fails silently (caught and logged, doesn't crash the request) — password reset and contact-form notifications just won't be delivered. |
+| `CLOUDINARY_CLOUD_NAME` | Optional | `your-cloud-name` | See [File uploads](#file-uploads--cloudinary-optional). |
+| `CLOUDINARY_API_KEY` | Optional | — | Required together with the other two Cloudinary vars, or none of them. |
+| `CLOUDINARY_API_SECRET` | Optional | — | Required together with the other two Cloudinary vars, or none of them. |
 
-### Deploy to Netlify
+### `frontend/.env.local` and `admin-dashboard/.env.local`
 
-1. **Build Frontend**
-   ```bash
-   cd frontend
-   npm run build
-   ```
+| Variable | Required | Example |
+|---|---|---|
+| `NEXT_PUBLIC_API_URL` | **Yes** | `https://your-backend.up.railway.app/api` |
 
-2. **Connect to Netlify**
-   - Drag and drop `frontend/.next` folder
-   - Or connect GitHub for auto-deployment
+Both apps use the **same** variable name and must point at the **same** deployed backend, with the trailing `/api` included (the codebase does not append it for you). Because it's prefixed `NEXT_PUBLIC_`, Next.js inlines it into the client bundle at **build time** — changing it in Vercel's dashboard requires a redeploy (not just a restart) to take effect.
 
-### Self-Hosted (VPS)
+## File uploads — Cloudinary (optional)
+
+`backend/utils/cloudinary.js` auto-detects whether Cloudinary is configured:
+
+- **All three `CLOUDINARY_*` vars set** → uploads (profile photos, result-sheet/datesheet PDFs, notice attachments, gallery images, etc.) go to Cloudinary and persist across deploys/restarts.
+- **Any of them missing** → falls back to writing to `backend/public/uploads/` on local disk.
+
+The local-disk fallback is fine for local development, but **do not rely on it in production on Railway/Heroku-style hosts** — their filesystems are ephemeral, so every uploaded file is silently lost on the next deploy or restart. Set all three Cloudinary vars for any real deployment.
+
+## 2. Backend deployment
+
+The repo ships both a `Procfile` (Heroku-compatible) and `nixpacks.toml` (Railway) in `backend/` — use whichever matches your host; you don't need both.
+
+### Railway (recommended — matches `nixpacks.toml`)
+
+1. New Project → Deploy from GitHub repo → set **Root Directory** to `backend`.
+2. Railway detects `nixpacks.toml` automatically (`npm install` at build, `node server.js` at start — same as the `Procfile`'s `web: node server.js`).
+3. Variables tab → add every var from the [backend table](#backendenv) above.
+4. Deploy. Railway assigns a public URL and injects `PORT` itself — don't hardcode `PORT` in Railway's variables.
+5. Once deployed, copy the public URL + `/api` for use as `NEXT_PUBLIC_API_URL` in both frontend apps.
+
+### Heroku (alternative — matches `Procfile`)
 
 ```bash
-# On your VPS
-cd /var/www/university-website
+heroku create ump-backend
+heroku config:set MONGO_URI=... JWT_SECRET=... ALLOWED_ORIGINS=... FRONTEND_URL=... GMAIL_USER=... GMAIL_APP_PASSWORD=... CLOUDINARY_CLOUD_NAME=... CLOUDINARY_API_KEY=... CLOUDINARY_API_SECRET=... NODE_ENV=production
+git subtree push --prefix backend heroku main
+```
 
-# Pull latest code
-git clone <repo-url> .
+### Any other Node host / VPS
 
-cd frontend
+```bash
+cd backend
 npm install
-npm run build
-
-# Use PM2 to keep running
-npm install -g pm2
-pm2 start "npm start" --name "ump-frontend"
-pm2 save
-pm2 startup
+# set the env vars in your host's dashboard, or write backend/.env
+npm start          # or: pm2 start server.js --name ump-backend
 ```
 
-## Backend Deployment
+## 3. Frontend deployment (Vercel)
 
-### Deploy to Heroku
+1. New Project → Import the repo → set **Root Directory** to `frontend`.
+2. Vercel auto-detects Next.js (`next build` / `next start`) — no build command overrides needed.
+3. Environment Variables → add `NEXT_PUBLIC_API_URL` = your deployed backend URL + `/api`.
+4. Deploy.
+5. `next.config.js` already sets `images: { unoptimized: true }`, so there's no image-domain allowlist to configure.
 
-1. **Install Heroku CLI**
-   ```bash
-   npm install -g heroku
-   heroku login
-   ```
+## 4. Admin dashboard deployment (Vercel)
 
-2. **Create Procfile** in backend/
-   ```
-   web: node server.js
-   ```
+Same steps as the frontend, as a **separate** Vercel project:
 
-3. **Deploy**
-   ```bash
-   heroku create ump-backend
-   heroku config:set MONGO_URI=<your-mongodb-atlas-uri>
-   heroku config:set JWT_SECRET=<your-secret>
-   git push heroku main
-   ```
+1. New Project → same repo → **Root Directory** = `admin-dashboard`.
+2. Environment Variables → `NEXT_PUBLIC_API_URL` = same backend URL + `/api` as the frontend.
+3. Deploy.
 
-### Deploy to Railway/Render
+## 5. Wire CORS to both deployed domains
 
-1. **Connect GitHub repository**
-2. **Set environment variables**
-   - MONGO_URI
-   - JWT_SECRET
-   - PORT (usually auto-set)
-3. **Deploy**
+Once both Vercel projects have their final `*.vercel.app` (or custom) domains, go back to the backend host's environment variables and set:
 
-### Self-Hosted (VPS)
+```
+ALLOWED_ORIGINS=https://<your-frontend-domain>,https://<your-admin-dashboard-domain>
+```
+
+Redeploy the backend after changing this — `server.js` reads it once at process start (`const allowedOrigins = process.env.ALLOWED_ORIGINS ? ... : [...]`), not per-request. If you add a Vercel preview-deployment domain or a custom domain later, add it to this list too; requests from an origin not in the list are rejected by `cors()` before they reach any route.
+
+## 6. MongoDB Atlas setup
+
+1. https://cloud.mongodb.com → create a project → build a cluster (the free M0 tier is enough to run this app).
+2. Database Access → add a database user with a strong password (this is the `user:pass` in `MONGO_URI`).
+3. Network Access → Add IP Address. For Railway/Heroku (dynamic egress IPs), the simplest option is `0.0.0.0/0` (allow from anywhere) since access is still gated by the database user's password; if your host publishes static egress IPs, allowlist those instead.
+4. Connect → Drivers → copy the `mongodb+srv://...` string, substitute the real password, and append a database name before the `?` (e.g. `.../university_makran?retryWrites=true...`) — the app does **not** default to a named database on an Atlas URI the way it does for the `mongodb://localhost` fallback.
+
+## 7. Seed the database
+
+After the backend is deployed and pointed at your real `MONGO_URI` (or when setting up locally against a fresh database), run the seed script **once** from the `backend` directory, with `MONGO_URI` set in the environment it runs in:
 
 ```bash
-# On your VPS
-cd /var/www/university-website/backend
-
-npm install
-npm start
-
-# Or use PM2
-npm install -g pm2
-pm2 start server.js --name "ump-backend"
-pm2 save
-pm2 startup
+cd backend
+node seed.js
 ```
 
-## Admin Dashboard Deployment
+It's idempotent — re-running it skips anything that already exists by unique key (department slug, program title, teacher/HOD/exam/finance id, etc.) rather than duplicating it. See the script's own console output for the full list of demo credentials it creates (also documented in `WORKFLOW_DEMO.md`).
 
-Same as Frontend - deploy to Vercel/Netlify with:
-- Root directory: `admin-dashboard`
-- Environment: `NEXT_PUBLIC_API_URL=https://your-backend-domain.com/api`
+Run it against Atlas by pointing `MONGO_URI` at the Atlas connection string when invoking it — e.g. from your local machine with the production `MONGO_URI` temporarily exported, or as a one-off Railway job with the same env vars as the deployed service.
 
-## Database Setup for Production
+## Security checklist before going live
 
-### MongoDB Atlas
+- [ ] `JWT_SECRET` is a long random value, not the sample from `.env.example`
+- [ ] `NODE_ENV=production` on the deployed backend (hides stack traces from API error responses)
+- [ ] `ALLOWED_ORIGINS` lists only the real frontend/admin-dashboard domains — not `*`, not left unset
+- [ ] MongoDB Atlas database user password is strong and unique to this project
+- [ ] Cloudinary vars are set so uploaded files survive redeploys (see [File uploads](#file-uploads--cloudinary-optional))
+- [ ] The default seeded Admin password (`Admin@123`) has been changed after first login
+- [ ] Gmail App Password is used, never the real account password
 
-1. **Create Cluster**
-   - Go to https://www.mongodb.com/cloud/atlas
-   - Sign up and create project
-   - Create cluster (M0 free tier is suitable for startup)
+## Post-deployment smoke test
 
-2. **Create Database User**
-   - Database Access → Create new user
-   - Set strong password
+1. `GET https://<backend>/api/health` → `{"status":"Backend is running successfully!"}`
+2. Load the deployed frontend → public pages (departments, programs, news) render with real data, not the "failed to load" fallback state.
+3. Load the deployed admin-dashboard → log in with the seeded admin account → `Portal Overview` stat cards on the dashboard show non-zero counts if you've seeded/registered data.
+4. Open browser devtools on the deployed frontend and confirm there are **no CORS errors** in the console when hitting any `/api/portal/*` login route — a CORS error here means `ALLOWED_ORIGINS` doesn't include this exact origin (check for a stray trailing slash or `http` vs `https` mismatch).
+5. Walk through `WORKFLOW_DEMO.md` end-to-end against the deployed environment.
 
-3. **Configure IP Whitelist**
-   - Network Access → Add IP Address
-   - Add your VPS/server IPs
+## Troubleshooting
 
-4. **Get Connection String**
-   - Click "Connect"
-   - Copy connection string
-   - Replace `<password>` with your user password
-   - Use as MONGO_URI
-
-## Environment Configuration
-
-### Backend (.env for Production)
-```
-MONGO_URI=mongodb+srv://user:password@cluster.mongodb.net/university_makran
-JWT_SECRET=your-very-secure-random-secret-key-here
-PORT=5000
-NODE_ENV=production
-```
-
-### Frontend (.env.local for Production)
-```
-NEXT_PUBLIC_API_URL=https://api.university-makran.com/api
-```
-
-### Admin Dashboard (.env.local for Production)
-```
-NEXT_PUBLIC_API_URL=https://api.university-makran.com/api
-```
-
-## Domain & SSL Setup
-
-### Using Cloudflare (Recommended)
-
-1. **Add Domain**
-   - Go to Cloudflare
-   - Add your domain
-   - Update nameservers at registrar
-
-2. **Point to Hosting**
-   - Create A record pointing to your server/hosting IP
-   - Enable Auto SSL
-
-3. **Set Up Subdomains**
-   ```
-   university-makran.com → Frontend
-   admin.university-makran.com → Admin Dashboard
-   api.university-makran.com → Backend
-   ```
-
-## Security Checklist
-
-- [ ] Change all default passwords
-- [ ] Enable HTTPS/SSL
-- [ ] Set strong JWT_SECRET
-- [ ] Configure CORS properly
-- [ ] Enable rate limiting
-- [ ] Set up firewall rules
-- [ ] Regular database backups
-- [ ] Monitor server logs
-- [ ] Enable email verification
-- [ ] Set up logging/monitoring
-
-## Performance Optimization
-
-1. **Enable Caching**
-   ```javascript
-   // In server.js
-   app.use((req, res) => {
-     res.setHeader('Cache-Control', 'public, max-age=3600');
-   });
-   ```
-
-2. **Compress Responses**
-   ```bash
-   npm install compression
-   ```
-   ```javascript
-   const compression = require('compression');
-   app.use(compression());
-   ```
-
-3. **Database Indexing** (see DATABASE_SCHEMA.md)
-
-4. **CDN Setup**
-   - Use Cloudflare for static assets
-   - Configure image optimization
-
-## Monitoring & Maintenance
-
-### Set Up Monitoring
-- Use services like DataDog, New Relic, or Sentry
-- Set up alerts for errors and downtime
-
-### Automated Backups
-```bash
-# Backup MongoDB weekly
-0 2 * * 0 mongodump --uri="<connection-string>" --out /backups/$(date +\%Y-\%m-\%d)
-```
-
-### Log Management
-- Use ELK Stack, Sumo Logic, or similar
-- Monitor API errors and performance
-
-## Scaling Strategies
-
-As traffic grows:
-
-1. **Database**
-   - Upgrade MongoDB tier
-   - Enable sharding for larger datasets
-
-2. **Backend**
-   - Use load balancer (Nginx, HAProxy)
-   - Run multiple Node.js instances with PM2 cluster mode
-   - Implement caching (Redis)
-
-3. **Frontend**
-   - Use CDN for assets (CloudFlare, Cloudfront)
-   - Enable image optimization
-   - Implement lazy loading
-
-## Common Issues & Solutions
-
-| Issue | Solution |
-|-------|----------|
-| Slow API | Check MongoDB indexes, implement caching |
-| 502 Bad Gateway | Restart backend, check memory usage |
-| CORS errors | Verify CORS origin in backend |
-| High latency | Use CDN, optimize queries, scale infrastructure |
-
-## Post-Deployment Testing
-
-1. **Functional Testing**
-   - Test all forms and submissions
-   - Verify all API endpoints
-   - Check portal logins
-
-2. **Performance Testing**
-   - Use Lighthouse for frontend
-   - Use artillery/k6 for load testing backend
-
-3. **Security Testing**
-   - Run OWASP ZAP scan
-   - Test SQL injection (if applicable)
-   - Verify authentication/authorization
-
-## Support & Troubleshooting
-
-For production issues:
-1. Check error logs first
-2. Monitor server resources
-3. Review recent changes
-4. Test in staging before production fixes
-
-## Rollback Procedure
-
-```bash
-# If deployment fails
-git revert <commit-hash>
-git push
-# Redeploy
-```
-
----
-
-**Deployment Complete!** Your University of Makran website is now live.
+| Symptom | Likely cause |
+|---|---|
+| Frontend shows empty lists / "failed to load" everywhere | `NEXT_PUBLIC_API_URL` wrong or missing `/api` suffix; check it was set **before** the Vercel build (it's baked in at build time) |
+| Browser console: `has been blocked by CORS policy` | Deployed frontend's exact origin isn't in the backend's `ALLOWED_ORIGINS`, or the backend hasn't redeployed since you changed it |
+| Login works but every subsequent request is 401 | `JWT_SECRET` changed (or differs between backend instances) after the token was issued — log in again |
+| Uploaded images/PDFs 404 after a while | Cloudinary vars not set — files were written to ephemeral local disk and lost on redeploy/restart |
+| Password reset / contact form emails never arrive | `GMAIL_USER`/`GMAIL_APP_PASSWORD` unset or wrong — check backend logs, `utils/mailer.js` logs failures instead of throwing |
+| `MongoServerError: bad auth` on startup | Database user/password in `MONGO_URI` is wrong, or the user doesn't have access to the named database |
+| Backend works locally, times out when deployed | Atlas Network Access doesn't allow the host's egress IP — see [MongoDB Atlas setup](#6-mongodb-atlas-setup) |

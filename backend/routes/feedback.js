@@ -5,8 +5,8 @@ const fs       = require('fs');
 const multer   = require('multer');
 const Feedback = require('../models/Feedback');
 
-const { createStorage } = require('../utils/cloudinary');
-const upload = multer({ storage: createStorage('feedback', ['jpg', 'jpeg', 'png', 'pdf']) });
+const { createUpload } = require('../utils/cloudinary');
+const upload = createUpload('feedback', ['jpg', 'jpeg', 'png', 'pdf']);
 
 // GET /api/feedback — newest first
 router.get('/', async (req, res) => {
@@ -14,7 +14,7 @@ router.get('/', async (req, res) => {
     const items = await Feedback.find().sort({ createdAt: -1 });
     res.json(items);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 
@@ -24,7 +24,7 @@ router.get('/unread-count', async (req, res) => {
     const count = await Feedback.countDocuments({ read: false });
     res.json({ count });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 
@@ -61,7 +61,7 @@ router.delete('/:id', async (req, res) => {
     await Feedback.findByIdAndDelete(req.params.id);
     res.json({ message: 'Feedback deleted' });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 

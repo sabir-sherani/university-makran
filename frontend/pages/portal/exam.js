@@ -6,13 +6,24 @@ const API      = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 const BASE_URL = API.replace('/api', '');
 const fileUrl = (u) => u?.startsWith('http') ? u : `${BASE_URL}${u}`;
 
-const inputCls = 'w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-200 focus:border-purple-500 transition-all';
+const inputCls = 'w-full px-4 py-2.5 min-h-11 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-200 focus:border-purple-500 transition-all';
 const labelCls = 'block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5';
 
 function Alert({ type, msg }) {
   if (!msg) return null;
   const styles = type === 'error' ? 'bg-red-50 border-l-4 border-red-500 text-red-700' : 'bg-green-50 border-l-4 border-green-500 text-green-700';
   return <div className={`px-4 py-3 rounded-lg text-sm mb-4 ${styles}`}>{msg}</div>;
+}
+
+// Formats an axios error into a single display string, appending
+// field-level validation detail when the API returned it.
+function formatApiError(err, fallback) {
+  const data = err.response?.data;
+  if (!data) return fallback;
+  let detail = '';
+  if (Array.isArray(data.errors)) detail = data.errors.join(' · ');
+  else if (data.errors && typeof data.errors === 'object') detail = Object.values(data.errors).join(' · ');
+  return detail ? `${data.message} ${detail}` : (data.message || fallback);
 }
 
 function StatCard({ label, value, color }) {
@@ -24,7 +35,7 @@ function StatCard({ label, value, color }) {
   );
 }
 
-const EMPTY_SHEET = { title: '', department: '', program: '', semester: '', academicSession: '', timeSession: '', isPublished: false };
+const EMPTY_SHEET = { title: '', departmentId: '', programId: '', semesterId: '', sessionId: '', timeSession: '', isPublished: false };
 const EMPTY_RESULT = { title: '', department: '', program: '', semester: '', academicSession: '', timeSession: '', passingMarks: '40', isPublished: false };
 
 export default function ExamPortal() {
@@ -45,6 +56,13 @@ export default function ExamPortal() {
   const [resultFile, setResultFile] = useState(null);
   const [saving, setSaving] = useState(false);
   const sheetRef = useRef(); const resultRef = useRef();
+
+  // Official-record dropdowns for the date sheet form + result-sheet filters
+  const [lkDepartments, setLkDepartments] = useState([]);
+  const [lkPrograms, setLkPrograms]       = useState([]);
+  const [lkSemesters, setLkSemesters]     = useState([]);
+  const [lkSessions, setLkSessions]       = useState([]);
+  const [rsLkPrograms, setRsLkPrograms]   = useState([]); // programs for the result-sheet filter bar (scoped to rsFilters.department)
   const [correctionReqs, setCorrectionReqs] = useState([]);
   const [crLoading, setCrLoading]           = useState(false);
   const [crFilter, setCrFilter]             = useState('');
@@ -54,9 +72,11 @@ export default function ExamPortal() {
   const [rsLoading, setRsLoading]           = useState(false);
   const [rsDetail, setRsDetail]             = useState(null);
   const [rsActing, setRsActing]             = useState({});
-  const [rsFilters, setRsFilters]           = useState({ department: '', program: '', semester: '', examType: '', status: '' });
+  const [rsFilters, setRsFilters]           = useState({ departmentId: '', programId: '', subject: '', semester: '', examType: '', status: '' });
   const [rsFinalizeId, setRsFinalizeId]     = useState(null);
   const [rsFinalizeThreshold, setRsFinalizeThreshold] = useState('50');
+  const [rsReturnId, setRsReturnId]         = useState(null);
+  const [rsReturnRemarks, setRsReturnRemarks] = useState('');
 
   // Degree verification state
   const EMPTY_DEGREE = { registrationNo: '', fullName: '', fatherName: '', department: '', program: '', session: '', graduationYear: '', cgpa: '', degreeStatus: 'completed', remarks: '' };
@@ -96,6 +116,34 @@ export default function ExamPortal() {
   useEffect(() => { if (tab === 'resultSheets' && token) fetchRsSheets(token); }, [tab, token]);
   useEffect(() => { if (tab === 'degrees'      && token) fetchDegrees(); }, [tab, token]);
 
+  // Departments + sessions are static lists, fetched once for the date sheet form.
+  useEffect(() => {
+    if (!token) return;
+    axios.get(`${API}/lookups/departments`).then(({ data }) => setLkDepartments(data || [])).catch(() => {});
+    axios.get(`${API}/lookups/sessions`).then(({ data }) => setLkSessions(data || [])).catch(() => {});
+  }, [token]);
+
+  // Programs for the date sheet form, scoped to the chosen department.
+  useEffect(() => {
+    if (!sheetForm.departmentId) { setLkPrograms([]); return; }
+    axios.get(`${API}/lookups/programs`, { params: { department: sheetForm.departmentId } })
+      .then(({ data }) => setLkPrograms(data || [])).catch(() => setLkPrograms([]));
+  }, [sheetForm.departmentId]);
+
+  // Semesters for the date sheet form, scoped to the chosen program.
+  useEffect(() => {
+    if (!sheetForm.programId) { setLkSemesters([]); return; }
+    axios.get(`${API}/lookups/semesters`, { params: { program: sheetForm.programId } })
+      .then(({ data }) => setLkSemesters(data || [])).catch(() => setLkSemesters([]));
+  }, [sheetForm.programId]);
+
+  // Programs for the result-sheet filter bar, scoped to the chosen department.
+  useEffect(() => {
+    if (!rsFilters.departmentId) { setRsLkPrograms([]); return; }
+    axios.get(`${API}/lookups/programs`, { params: { department: rsFilters.departmentId } })
+      .then(({ data }) => setRsLkPrograms(data || [])).catch(() => setRsLkPrograms([]));
+  }, [rsFilters.departmentId]);
+
   const fetchCorrectionReqs = async (tok, filter = '') => {
     setCrLoading(true);
     try {
@@ -110,11 +158,19 @@ export default function ExamPortal() {
     setRsLoading(true);
     try {
       const q = new URLSearchParams();
-      if (filters.department) q.set('department', filters.department);
-      if (filters.program)    q.set('program',    filters.program);
-      if (filters.semester)   q.set('semester',   filters.semester);
-      if (filters.examType)   q.set('examType',   filters.examType);
-      if (filters.status)     q.set('status',     filters.status);
+      // The backend still filters by department/program NAME (free-text
+      // string match), so resolve the dropdown-selected id back to its
+      // display name before sending — this only changes how the value is
+      // picked (a dropdown of real records instead of a free-text box), not
+      // what the API receives.
+      const deptName = lkDepartments.find(d => d._id === filters.departmentId)?.name;
+      const progName = rsLkPrograms.find(p => p._id === filters.programId)?.title;
+      if (deptName)          q.set('department', deptName);
+      if (progName)          q.set('program',    progName);
+      if (filters.subject)   q.set('subject',    filters.subject);
+      if (filters.semester)  q.set('semester',   filters.semester);
+      if (filters.examType)  q.set('examType',   filters.examType);
+      if (filters.status)    q.set('status',     filters.status);
       const { data } = await axios.get(`${API}/portal/exam/result-sheets${q.toString() ? '?' + q : ''}`, { headers: { Authorization: `Bearer ${tok || token}` } });
       setRsSheets(data || []);
     } catch { setRsSheets([]); }
@@ -148,6 +204,24 @@ export default function ExamPortal() {
       setRsSheets(p => p.map(s => s._id === id ? { ...s, status: 'submitted' } : s));
       if (rsDetail?._id === id) setRsDetail(p => p ? { ...p, status: 'submitted' } : p);
     } catch (err) { setAlert({ type: 'error', msg: err.response?.data?.message || 'Revert failed.' }); }
+    setRsActing(p => ({ ...p, [id]: false }));
+  };
+
+  const handleRsReturn = async () => {
+    const id = rsReturnId;
+    if (!id) return;
+    if (!rsReturnRemarks.trim()) {
+      setAlert({ type: 'error', msg: 'Please explain what needs correcting.' });
+      return;
+    }
+    setRsActing(p => ({ ...p, [id]: 'returning' }));
+    try {
+      const { data } = await axios.patch(`${API}/portal/exam/result-sheets/${id}/return`, { remarks: rsReturnRemarks }, { headers: { Authorization: `Bearer ${token}` } });
+      setRsSheets(p => p.map(s => s._id === id ? data.sheet : s));
+      if (rsDetail?._id === id) setRsDetail(data.sheet);
+      setAlert({ type: 'success', msg: data.message });
+      setRsReturnId(null); setRsReturnRemarks('');
+    } catch (err) { setAlert({ type: 'error', msg: formatApiError(err, 'Failed to return for correction.') }); }
     setRsActing(p => ({ ...p, [id]: false }));
   };
 
@@ -272,7 +346,7 @@ export default function ExamPortal() {
       if (sheetRef.current) sheetRef.current.value = '';
       setAlert({ type: 'success', msg: 'Date sheet uploaded.' });
       loadData(token);
-    } catch (err) { setAlert({ type: 'error', msg: err.response?.data?.message || 'Upload failed.' }); }
+    } catch (err) { setAlert({ type: 'error', msg: formatApiError(err, 'Upload failed.') }); }
     setSaving(false);
   }
 
@@ -446,14 +520,42 @@ export default function ExamPortal() {
                 <form onSubmit={submitSheet} className="space-y-4">
                   <FormField label="Title *" name="title" value={sheetForm.title} placeholder="e.g. Mid-Term Date Sheet"
                     onChange={e => setSheetForm(p => ({ ...p, title: e.target.value }))} />
-                  <FormField label="Department" name="department" value={sheetForm.department} placeholder="CS & IT"
-                    onChange={e => setSheetForm(p => ({ ...p, department: e.target.value }))} />
-                  <FormField label="Program" name="program" value={sheetForm.program} placeholder="BS Computer Science"
-                    onChange={e => setSheetForm(p => ({ ...p, program: e.target.value }))} />
-                  <FormField label="Semester" name="semester" value={sheetForm.semester} placeholder="1st"
-                    onChange={e => setSheetForm(p => ({ ...p, semester: e.target.value }))} />
-                  <FormField label="Academic Session" name="academicSession" value={sheetForm.academicSession} placeholder="2025-26"
-                    onChange={e => setSheetForm(p => ({ ...p, academicSession: e.target.value }))} />
+                  <div>
+                    <label className={labelCls}>Department *</label>
+                    <select value={sheetForm.departmentId} required
+                      onChange={e => setSheetForm(p => ({ ...p, departmentId: e.target.value, programId: '', semesterId: '' }))}
+                      className={inputCls}>
+                      <option value="">— Select department —</option>
+                      {lkDepartments.map(d => <option key={d._id} value={d._id}>{d.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelCls}>Program *</label>
+                    <select value={sheetForm.programId} required disabled={!sheetForm.departmentId}
+                      onChange={e => setSheetForm(p => ({ ...p, programId: e.target.value, semesterId: '' }))}
+                      className={inputCls}>
+                      <option value="">{sheetForm.departmentId ? '— Select program —' : 'Select a department first'}</option>
+                      {lkPrograms.map(p => <option key={p._id} value={p._id}>{p.title}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelCls}>Semester *</label>
+                    <select value={sheetForm.semesterId} required disabled={!sheetForm.programId}
+                      onChange={e => setSheetForm(p => ({ ...p, semesterId: e.target.value }))}
+                      className={inputCls}>
+                      <option value="">{sheetForm.programId ? '— Select semester —' : 'Select a program first'}</option>
+                      {lkSemesters.map(s => <option key={s._id} value={s._id}>{s.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelCls}>Academic Session *</label>
+                    <select value={sheetForm.sessionId} required
+                      onChange={e => setSheetForm(p => ({ ...p, sessionId: e.target.value }))}
+                      className={inputCls}>
+                      <option value="">— Select session —</option>
+                      {lkSessions.map(s => <option key={s._id} value={s._id}>{s.name}</option>)}
+                    </select>
+                  </div>
                   <div>
                     <label className={labelCls}>Time Session</label>
                     <select value={sheetForm.timeSession}
@@ -627,9 +729,14 @@ export default function ExamPortal() {
                   <span className={`px-3 py-1 rounded-full text-xs font-bold ${RS_BADGE[sheet.status] || 'bg-gray-100 text-gray-600'}`}>{sheet.status}</span>
                   <div className="ml-auto flex gap-2">
                     {sheet.status === 'submitted' && (
-                      <button onClick={() => { setRsFinalizeId(sheet._id); setRsFinalizeThreshold('50'); }} disabled={!!rsActing[sheet._id]} className="px-5 py-2 bg-green-600 text-white font-bold rounded-xl text-sm hover:opacity-90 disabled:opacity-60">
-                        {rsActing[sheet._id] === 'finalizing' ? 'Finalizing…' : '✅ Finalize & Publish'}
-                      </button>
+                      <>
+                        <button onClick={() => { setRsReturnId(sheet._id); setRsReturnRemarks(''); }} disabled={!!rsActing[sheet._id]} className="px-5 py-2 border border-red-300 text-red-600 font-bold rounded-xl text-sm hover:bg-red-50 disabled:opacity-60">
+                          {rsActing[sheet._id] === 'returning' ? 'Returning…' : '↩ Return for Correction'}
+                        </button>
+                        <button onClick={() => { setRsFinalizeId(sheet._id); setRsFinalizeThreshold('50'); }} disabled={!!rsActing[sheet._id]} className="px-5 py-2 bg-green-600 text-white font-bold rounded-xl text-sm hover:opacity-90 disabled:opacity-60">
+                          {rsActing[sheet._id] === 'finalizing' ? 'Finalizing…' : '✅ Finalize & Publish'}
+                        </button>
+                      </>
                     )}
                     {sheet.status === 'finalized' && (
                       <button onClick={() => handleRsRevert(sheet._id)} disabled={!!rsActing[sheet._id]} className="px-5 py-2 bg-orange-500 text-white font-bold rounded-xl text-sm hover:opacity-90 disabled:opacity-60">
@@ -686,9 +793,19 @@ export default function ExamPortal() {
               <p className="text-gray-500 text-sm mb-5">Review and finalize teacher-submitted result sheets. Finalized sheets are visible to students.</p>
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-5">
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                  {[['Department', 'department'], ['Program', 'program'], ['Subject', 'subject']].map(([lbl, key]) => (
-                    <input key={key} value={rsFilters[key]} onChange={e => setRsFilters(p => ({ ...p, [key]: e.target.value }))} placeholder={lbl} className="px-3 py-2 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-purple-200" />
-                  ))}
+                  <select value={rsFilters.departmentId}
+                    onChange={e => setRsFilters(p => ({ ...p, departmentId: e.target.value, programId: '' }))}
+                    className="px-3 py-2 border border-gray-200 rounded-xl text-xs bg-white focus:outline-none focus:ring-2 focus:ring-purple-200">
+                    <option value="">All Departments</option>
+                    {lkDepartments.map(d => <option key={d._id} value={d._id}>{d.name}</option>)}
+                  </select>
+                  <select value={rsFilters.programId} disabled={!rsFilters.departmentId}
+                    onChange={e => setRsFilters(p => ({ ...p, programId: e.target.value }))}
+                    className="px-3 py-2 border border-gray-200 rounded-xl text-xs bg-white focus:outline-none focus:ring-2 focus:ring-purple-200">
+                    <option value="">All Programs</option>
+                    {rsLkPrograms.map(p => <option key={p._id} value={p._id}>{p.title}</option>)}
+                  </select>
+                  <input value={rsFilters.subject || ''} onChange={e => setRsFilters(p => ({ ...p, subject: e.target.value }))} placeholder="Subject" className="px-3 py-2 border border-gray-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-purple-200" />
                   <select value={rsFilters.semester} onChange={e => setRsFilters(p => ({ ...p, semester: e.target.value }))} className="px-3 py-2 border border-gray-200 rounded-xl text-xs bg-white focus:outline-none focus:ring-2 focus:ring-purple-200">
                     <option value="">All Semesters</option>
                     {[1,2,3,4,5,6,7,8].map(n => <option key={n} value={`Semester ${n}`}>Semester {n}</option>)}
@@ -728,9 +845,14 @@ export default function ExamPortal() {
                               <div className="flex gap-1.5">
                                 <button onClick={() => openRsDetail(s)} className="text-xs text-purple-600 font-bold px-2.5 py-1.5 border border-purple-200 rounded-lg hover:bg-purple-50 whitespace-nowrap">View</button>
                                 {s.status === 'submitted' && (
-                                  <button onClick={() => { setRsFinalizeId(s._id); setRsFinalizeThreshold('50'); }} disabled={!!rsActing[s._id]} className="text-xs text-green-700 font-bold px-2.5 py-1.5 border border-green-200 rounded-lg hover:bg-green-50 whitespace-nowrap disabled:opacity-50">
-                                    {rsActing[s._id] ? '…' : 'Finalize'}
-                                  </button>
+                                  <>
+                                    <button onClick={() => { setRsReturnId(s._id); setRsReturnRemarks(''); }} disabled={!!rsActing[s._id]} className="text-xs text-red-600 font-bold px-2.5 py-1.5 border border-red-200 rounded-lg hover:bg-red-50 whitespace-nowrap disabled:opacity-50">
+                                      {rsActing[s._id] ? '…' : 'Return'}
+                                    </button>
+                                    <button onClick={() => { setRsFinalizeId(s._id); setRsFinalizeThreshold('50'); }} disabled={!!rsActing[s._id]} className="text-xs text-green-700 font-bold px-2.5 py-1.5 border border-green-200 rounded-lg hover:bg-green-50 whitespace-nowrap disabled:opacity-50">
+                                      {rsActing[s._id] ? '…' : 'Finalize'}
+                                    </button>
+                                  </>
                                 )}
                                 {s.status === 'finalized' && (
                                   <button onClick={() => handleRsRevert(s._id)} disabled={!!rsActing[s._id]} className="text-xs text-orange-600 font-bold px-2.5 py-1.5 border border-orange-200 rounded-lg hover:bg-orange-50 whitespace-nowrap disabled:opacity-50">
@@ -1005,6 +1127,44 @@ export default function ExamPortal() {
               </button>
               <button
                 onClick={() => { setRsFinalizeId(null); setRsFinalizeThreshold('50'); }}
+                className="flex-1 border border-gray-300 text-gray-600 py-2.5 rounded-xl font-bold text-sm hover:bg-gray-50 transition"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Return-for-correction modal */}
+      {rsReturnId && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm">
+            <h3 className="font-bold text-gray-800 text-lg mb-1">Return for Correction</h3>
+            <p className="text-gray-500 text-sm mb-4">
+              This sends the result sheet back to the teacher (status reverts to <strong>draft</strong>) so they can fix and resubmit it. Explain what needs correcting.
+            </p>
+            <div className="mb-4">
+              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Remarks *</label>
+              <textarea
+                rows={4}
+                value={rsReturnRemarks}
+                onChange={e => setRsReturnRemarks(e.target.value)}
+                className="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:border-red-500"
+                placeholder="e.g. Marks for CS-2024-012 look transposed — please double check."
+                autoFocus
+              />
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={handleRsReturn}
+                disabled={!!rsActing[rsReturnId]}
+                className="flex-1 bg-red-600 text-white py-2.5 rounded-xl font-bold text-sm hover:bg-red-700 transition disabled:opacity-50"
+              >
+                {rsActing[rsReturnId] ? 'Returning…' : '↩ Return to Teacher'}
+              </button>
+              <button
+                onClick={() => { setRsReturnId(null); setRsReturnRemarks(''); }}
                 className="flex-1 border border-gray-300 text-gray-600 py-2.5 rounded-xl font-bold text-sm hover:bg-gray-50 transition"
               >
                 Cancel

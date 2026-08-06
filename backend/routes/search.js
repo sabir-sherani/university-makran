@@ -196,7 +196,7 @@ router.get('/', async (req, res) => {
 
     res.json({ query: q, total: results.length, results });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 

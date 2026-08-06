@@ -24,6 +24,8 @@ import {
   LuImage,
   LuLogOut,
   LuLock,
+  LuHistory,
+  LuReceipt,
 } from 'react-icons/lu';
 
 const API = process.env.NEXT_PUBLIC_API_URL;
@@ -46,6 +48,9 @@ const NAV = [
 
   { label: 'Messages',        href: '/admin/messages',       Icon: LuMail },
   { label: 'Staff Roles',     href: '/admin/staff',          Icon: LuShieldCheck },
+  { label: 'Corrections',     href: '/admin/correction-requests', Icon: LuFileEdit },
+  { label: 'Fee Challans',    href: '/admin/challans',       Icon: LuReceipt },
+  { label: 'Activity Log',    href: '/admin/activity',       Icon: LuHistory },
   { label: 'Security',        href: '/admin/security',       Icon: LuLock },
 ];
 
@@ -55,6 +60,7 @@ const BADGE_KEYS = {
   '/admin/feedback':     'feedback',
   '/admin/students':     'pendingStudents',
   '/admin/teachers':     'pendingTeachers',
+  '/admin/correction-requests': 'pendingCorrectionRequests',
 };
 
 function getAdminToken() {
@@ -64,7 +70,7 @@ function getAdminToken() {
 
 export default function AdminHeader() {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [notifs, setNotifs] = useState({ messages: 0, applications: 0, feedback: 0, pendingStudents: 0, pendingTeachers: 0 });
+  const [notifs, setNotifs] = useState({ messages: 0, applications: 0, feedback: 0, pendingStudents: 0, pendingTeachers: 0, pendingCorrectionRequests: 0 });
   const router = useRouter();
 
   useEffect(() => {
@@ -77,7 +83,12 @@ export default function AdminHeader() {
         const tok = getAdminToken();
         if (tok) {
           const { data } = await axios.get(`${API}/portal/admin/stats`, { headers: { Authorization: `Bearer ${tok}` } });
-          setNotifs(p => ({ ...p, pendingStudents: data.pendingStudents || 0, pendingTeachers: data.pendingTeachers || 0 }));
+          setNotifs(p => ({
+            ...p,
+            pendingStudents: data.pendingStudents || 0,
+            pendingTeachers: data.pendingTeachers || 0,
+            pendingCorrectionRequests: data.pendingCorrectionRequests || 0,
+          }));
         }
       } catch { /* silent */ }
     }

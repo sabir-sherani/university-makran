@@ -13,9 +13,14 @@ const FeeChallanSchema = new mongoose.Schema({
   studentName:         { type: String, required: true },
   fatherName:          { type: String, default: '' },
   department:          { type: String, default: '' },
+  departmentId:        { type: mongoose.Schema.Types.ObjectId, ref: 'Department' },
   program:             { type: String, required: true },
+  programId:           { type: mongoose.Schema.Types.ObjectId, ref: 'Program' },
   semester:            { type: String, required: true },
+  semesterId:          { type: mongoose.Schema.Types.ObjectId, ref: 'Semester' },
   academicSession:     { type: String, default: '' },
+  sessionId:           { type: mongoose.Schema.Types.ObjectId, ref: 'AcademicSession' },
+  feeStructure:        { type: mongoose.Schema.Types.ObjectId, ref: 'FeeStructure' },
   feeItems:            [FeeItemSchema],
   totalAmount:         { type: Number, required: true },
   dueDate:             Date,
@@ -26,7 +31,10 @@ const FeeChallanSchema = new mongoose.Schema({
   paymentInstructions: { type: String, default: 'Deposit the fee amount in the university bank account and submit the original deposit slip to the Finance Section within the due date.' },
   status:              { type: String, enum: ['generated','paid','expired','cancelled'], default: 'generated' },
   paidAt:              Date,
-  paymentRef:          { type: String, default: '' },
+  // No default: an empty string would still satisfy the sparse index (sparse
+  // only excludes documents where the field is undefined/missing), so an
+  // unpaid challan must have paymentRef genuinely unset, not ''.
+  paymentRef:          { type: String, unique: true, sparse: true },
   generatedBy:         mongoose.Schema.Types.ObjectId,
   issuedAt:            { type: Date, default: Date.now },
 }, { timestamps: true });

@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const accountSecurityFields = require('./accountSecurityFields');
 
 const AdminSchema = new mongoose.Schema({
   email:    { type: String, unique: true, required: true },
@@ -13,6 +14,7 @@ const AdminSchema = new mongoose.Schema({
     code: String,  // bcrypt-hashed
     used: { type: Boolean, default: false },
   }],
+  ...accountSecurityFields,
 }, { timestamps: true });
 
 module.exports = mongoose.model('Admin', AdminSchema);

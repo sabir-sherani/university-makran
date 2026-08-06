@@ -5,8 +5,8 @@ const path = require('path');
 const fs = require('fs');
 const AdministrationDept = require('../models/AdministrationDept');
 
-const { createStorage } = require('../utils/cloudinary');
-const upload = multer({ storage: createStorage('administration', ['jpg', 'jpeg', 'png', 'webp']) });
+const { createUpload } = require('../utils/cloudinary');
+const upload = createUpload('administration', ['jpg', 'jpeg', 'png', 'webp']);
 
 function slugify(name) {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
@@ -26,7 +26,7 @@ router.get('/', async (req, res) => {
       .sort({ order: 1, name: 1 });
     res.json(depts);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 
@@ -38,7 +38,7 @@ router.get('/trash', async (req, res) => {
       .sort({ deletedAt: -1 });
     res.json(depts);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 
@@ -49,7 +49,7 @@ router.get('/slug/:slug', async (req, res) => {
     if (!dept) return res.status(404).json({ message: 'Department not found' });
     res.json(dept);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 
@@ -60,7 +60,7 @@ router.get('/:id', async (req, res) => {
     if (!dept) return res.status(404).json({ message: 'Department not found' });
     res.json(dept);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 
@@ -160,7 +160,7 @@ router.patch('/:id/restore', async (req, res) => {
     await AdministrationDept.findByIdAndUpdate(req.params.id, { deletedAt: null });
     res.json({ message: 'Department restored' });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 
@@ -170,7 +170,7 @@ router.delete('/:id/permanent', async (req, res) => {
     await AdministrationDept.findByIdAndDelete(req.params.id);
     res.json({ message: 'Department permanently deleted' });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 
@@ -180,7 +180,7 @@ router.delete('/:id', async (req, res) => {
     await AdministrationDept.findByIdAndUpdate(req.params.id, { deletedAt: new Date() });
     res.json({ message: 'Department moved to trash' });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 

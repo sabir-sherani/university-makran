@@ -2,9 +2,9 @@ const express = require('express');
 const router = require('express').Router();
 const multer = require('multer');
 const News = require('../models/News');
-const { createStorage } = require('../utils/cloudinary');
+const { createUpload } = require('../utils/cloudinary');
 
-const upload = multer({ storage: createStorage('news') });
+const upload = createUpload('news');
 
 // GET /api/news — all published news sorted by date desc
 router.get('/', async (req, res) => {
@@ -12,7 +12,7 @@ router.get('/', async (req, res) => {
     const news = await News.find({ published: true }).sort({ date: -1 });
     res.json(news);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 
@@ -22,7 +22,7 @@ router.get('/hero', async (req, res) => {
     const news = await News.find({ published: true, featuredInHero: true }).sort({ date: -1 }).limit(5);
     res.json(news);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 
@@ -32,7 +32,7 @@ router.get('/all', async (req, res) => {
     const news = await News.find().sort({ date: -1 });
     res.json(news);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 
@@ -43,7 +43,7 @@ router.get('/:id', async (req, res) => {
     if (!item) return res.status(404).json({ message: 'News item not found' });
     res.json(item);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 
@@ -106,7 +106,7 @@ router.delete('/:id', async (req, res) => {
     await News.findByIdAndDelete(req.params.id);
     res.json({ message: 'News item deleted' });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 

@@ -22,7 +22,7 @@ router.get('/', async (req, res) => {
       facilities:   12,
     });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 
@@ -36,7 +36,7 @@ router.get('/notifications', async (req, res) => {
     ]);
     res.json({ messages, applications, feedback });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 

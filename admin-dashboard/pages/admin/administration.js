@@ -247,13 +247,13 @@ export default function AdministrationAdmin() {
       />
 
       <div className="ml-0 lg:ml-56 p-8">
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-8">
           <h2 className="text-3xl font-bold text-primary">
             {editId ? 'Edit Department' : 'Administration Departments'}
           </h2>
           <button
             onClick={() => setShowTrash(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl border text-sm font-semibold transition-colors"
+            className="flex items-center gap-2 px-4 py-2 min-h-11 rounded-xl border text-sm font-semibold transition-colors self-start"
             style={{ borderColor: trashItems.length ? '#fca5a5' : '#e5e7eb', color: trashItems.length ? '#dc2626' : '#6b7280', background: trashItems.length ? '#fef2f2' : '#f9fafb' }}
           >
             <LuTrash2 size={15} />

@@ -7,8 +7,8 @@ const fs      = require('fs');
 const AdmissionNotice = require('../models/AdmissionNotice');
 
 // ── File upload setup ────────────────────────────────────────────────
-const { createStorage } = require('../utils/cloudinary');
-const upload = multer({ storage: createStorage('admission-content') });
+const { createUpload } = require('../utils/cloudinary');
+const upload = createUpload('admission-content');
 
 // ═══════════════════════════════════════════════════════════════════
 // NOTICES — CRUD
@@ -20,7 +20,7 @@ router.get('/notices/all', async (req, res) => {
     const notices = await AdmissionNotice.find().sort({ date: -1 });
     res.json(notices);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 
@@ -30,7 +30,7 @@ router.get('/notices', async (req, res) => {
     const notices = await AdmissionNotice.find({ published: true }).sort({ date: -1 });
     res.json(notices);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 
@@ -95,7 +95,7 @@ router.delete('/notices/:id', async (req, res) => {
     await AdmissionNotice.findByIdAndDelete(req.params.id);
     res.json({ message: 'Deleted' });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 

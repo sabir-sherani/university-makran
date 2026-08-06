@@ -108,6 +108,8 @@ function TeacherDetailPanel({ teacher, onClose, onStatusChange }) {
   );
 }
 
+const PAGE_SIZE = 20;
+
 export default function TeachersPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState('teachers');
@@ -120,6 +122,17 @@ export default function TeachersPage() {
   const [tDept, setTDept]         = useState('');
   const [tDetail, setTDetail]     = useState(null);
   const [tActing, setTActing]     = useState(null);
+  const [tPage, setTPage]         = useState(1);
+  const [tPages, setTPages]       = useState(1);
+  const [tTotal, setTTotal]       = useState(0);
+  const [routerReady, setRouterReady] = useState(false);
+
+  // Honor a ?status= query param from quick links (e.g. dashboard "Pending Teacher Approvals")
+  useEffect(() => {
+    if (!router.isReady) return;
+    if (typeof router.query.status === 'string') setTStatus(router.query.status);
+    setRouterReady(true);
+  }, [router.isReady]);
 
   // Teacher IDs state
   const [ids, setIds]             = useState([]);
@@ -133,15 +146,18 @@ export default function TeachersPage() {
   const [msg, setMsg]             = useState({ text: '', type: '' });
   const flash = (text, type = 'success') => { setMsg({ text, type }); setTimeout(() => setMsg({ text: '', type: '' }), 4000); };
 
-  const loadTeachers = useCallback(async (q = {}) => {
+  const loadTeachers = useCallback(async (q = {}, pageNum = 1) => {
     setTLoading(true);
     try {
-      const params = new URLSearchParams();
-      if (q.search) params.set('search', q.search);
-      if (q.status) params.set('status', q.status);
-      if (q.department) params.set('department', q.department);
-      const { data } = await axios.get(`${API}/portal/admin/teachers${params.toString() ? '?' + params : ''}`, authHeaders());
-      setTeachers(data || []);
+      const params = { page: pageNum, limit: PAGE_SIZE };
+      if (q.search) params.search = q.search;
+      if (q.status) params.status = q.status;
+      if (q.department) params.department = q.department;
+      const { data } = await axios.get(`${API}/portal/admin/teachers`, { ...authHeaders(), params });
+      setTeachers(data.data || []);
+      setTTotal(data.total || 0);
+      setTPages(data.pages || 1);
+      setTPage(data.page || 1);
     } catch (err) {
       if (err.response?.status === 401 || err.response?.status === 403) {
         localStorage.removeItem('adminToken');
@@ -162,7 +178,15 @@ export default function TeachersPage() {
     setIdLoading(false);
   }, []);
 
-  useEffect(() => { loadTeachers(); loadIds(); }, [loadTeachers, loadIds]);
+  useEffect(() => {
+    if (routerReady) loadTeachers({ search: tSearch, status: tStatus, department: tDept }, 1);
+  }, [routerReady]);
+
+  useEffect(() => { loadIds(); }, [loadIds]);
+
+  function tGoToPage(p) {
+    loadTeachers({ search: tSearch, status: tStatus, department: tDept }, p);
+  }
 
   async function handleTStatusChange(id, status) {
     try {
@@ -179,8 +203,8 @@ export default function TeachersPage() {
     try {
       await axios.delete(`${API}/portal/admin/teachers/${id}`, authHeaders());
       flash('Teacher deleted.');
-      setTeachers(prev => prev.filter(t => t._id !== id));
       if (tDetail?._id === id) setTDetail(null);
+      loadTeachers({ search: tSearch, status: tStatus, department: tDept }, tPage);
     } catch (err) { flash(err.response?.data?.message || 'Delete failed.', 'error'); }
     setTActing(null);
   }
@@ -237,13 +261,13 @@ export default function TeachersPage() {
           <Flash msg={msg.text} type={msg.type} />
 
           {/* Tabs */}
-          <div className="flex gap-1 bg-white rounded-2xl border border-gray-100 shadow-sm p-1.5 w-fit mb-6">
+          <div className="flex gap-1 bg-white rounded-2xl border border-gray-100 shadow-sm p-1.5 max-w-full overflow-x-auto mb-6">
             {[['teachers', 'Registered Teachers'], ['ids', 'Teacher IDs']].map(([key, lbl]) => (
               <button key={key} onClick={() => setActiveTab(key)}
-                className={`px-6 py-2.5 rounded-xl text-sm font-bold transition ${activeTab === key ? 'text-white shadow-sm' : 'text-gray-600 hover:text-gray-800'}`}
+                className={`shrink-0 px-6 py-2.5 min-h-11 rounded-xl text-sm font-bold transition ${activeTab === key ? 'text-white shadow-sm' : 'text-gray-600 hover:text-gray-800'}`}
                 style={activeTab === key ? { background: '#041476' } : {}}>
                 {lbl}
-                {key === 'teachers' && <span className="ml-2 bg-white/20 text-xs px-1.5 py-0.5 rounded-full">{teachers.length}</span>}
+                {key === 'teachers' && <span className="ml-2 bg-white/20 text-xs px-1.5 py-0.5 rounded-full">{tTotal}</span>}
                 {key === 'ids'      && <span className="ml-2 bg-white/20 text-xs px-1.5 py-0.5 rounded-full">{freeIds.length} free</span>}
               </button>
             ))}
@@ -252,18 +276,8 @@ export default function TeachersPage() {
           {/* ── Registered Teachers ── */}
           {activeTab === 'teachers' && (
             <>
-              {/* Stats */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-                {[['Total', teachers.length, 'text-blue-700 bg-blue-50 border-blue-100'], ['Pending', teachers.filter(t => t.status === 'pending').length, 'text-yellow-700 bg-yellow-50 border-yellow-100'], ['Approved', teachers.filter(t => t.status === 'approved').length, 'text-green-700 bg-green-50 border-green-100'], ['Rejected/Suspended', teachers.filter(t => t.status === 'rejected' || t.status === 'suspended').length, 'text-red-700 bg-red-50 border-red-100']].map(([lbl, val, cls]) => (
-                  <div key={lbl} className={`rounded-2xl border p-4 ${cls}`}>
-                    <p className="text-xs font-bold uppercase tracking-wider opacity-70">{lbl}</p>
-                    <p className="text-2xl font-black mt-1">{val}</p>
-                  </div>
-                ))}
-              </div>
-
               {/* Search */}
-              <form onSubmit={e => { e.preventDefault(); loadTeachers({ search: tSearch, status: tStatus, department: tDept }); }}
+              <form onSubmit={e => { e.preventDefault(); loadTeachers({ search: tSearch, status: tStatus, department: tDept }, 1); }}
                 className="flex gap-3 mb-6 flex-wrap bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
                 <input value={tSearch} onChange={e => setTSearch(e.target.value)}
                   placeholder="Search by name, teacher ID, or email…"
@@ -280,19 +294,22 @@ export default function TeachersPage() {
                   placeholder="Department…"
                   className="w-44 px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-500" />
                 <button type="submit" className="px-6 py-2.5 text-white font-bold rounded-xl text-sm hover:opacity-90 transition" style={{ background: '#041476' }}>Search</button>
-                <button type="button" onClick={() => { setTSearch(''); setTStatus(''); setTDept(''); loadTeachers(); }}
+                <button type="button" onClick={() => { setTSearch(''); setTStatus(''); setTDept(''); loadTeachers({}, 1); }}
                   className="px-4 py-2.5 border border-gray-200 text-gray-600 font-medium rounded-xl text-sm hover:bg-gray-50 transition">Reset</button>
               </form>
 
               {/* Quick filters */}
-              <div className="flex gap-2 mb-5 flex-wrap">
-                {[['', 'All'], ['pending', 'Pending'], ['approved', 'Approved'], ['rejected', 'Rejected'], ['suspended', 'Suspended']].map(([val, lbl]) => (
-                  <button key={val} onClick={() => { setTStatus(val); loadTeachers({ search: tSearch, status: val, department: tDept }); }}
-                    className={`px-4 py-1.5 rounded-full text-xs font-bold border transition ${tStatus === val ? 'text-white border-primary' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
-                    style={tStatus === val ? { background: '#041476' } : {}}>
-                    {lbl}
-                  </button>
-                ))}
+              <div className="flex items-center justify-between mb-5 flex-wrap gap-2">
+                <div className="flex gap-2 flex-wrap">
+                  {[['', 'All'], ['pending', 'Pending'], ['approved', 'Approved'], ['rejected', 'Rejected'], ['suspended', 'Suspended']].map(([val, lbl]) => (
+                    <button key={val} onClick={() => { setTStatus(val); loadTeachers({ search: tSearch, status: val, department: tDept }, 1); }}
+                      className={`px-4 py-1.5 rounded-full text-xs font-bold border transition ${tStatus === val ? 'text-white border-primary' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+                      style={tStatus === val ? { background: '#041476' } : {}}>
+                      {lbl}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-400">{tTotal} teacher{tTotal !== 1 ? 's' : ''} matching filters</p>
               </div>
 
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
@@ -363,8 +380,18 @@ export default function TeachersPage() {
                         ))}
                       </tbody>
                     </table>
-                    <div className="px-5 py-3 border-t border-gray-50 bg-gray-50">
-                      <p className="text-xs text-gray-400">Showing {teachers.length} teacher record{teachers.length !== 1 ? 's' : ''}</p>
+                    <div className="flex items-center justify-between px-5 py-3 border-t border-gray-50 bg-gray-50">
+                      <p className="text-xs text-gray-400">Page {tPage} of {tPages} · {tTotal} total</p>
+                      <div className="flex gap-2">
+                        <button disabled={tPage <= 1} onClick={() => tGoToPage(tPage - 1)}
+                          className="px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-600 border border-gray-200 disabled:opacity-40 hover:bg-gray-50 transition-colors">
+                          ← Prev
+                        </button>
+                        <button disabled={tPage >= tPages} onClick={() => tGoToPage(tPage + 1)}
+                          className="px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-600 border border-gray-200 disabled:opacity-40 hover:bg-gray-50 transition-colors">
+                          Next →
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}

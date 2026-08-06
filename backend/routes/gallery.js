@@ -4,9 +4,11 @@ const multer  = require('multer');
 const path    = require('path');
 const fs      = require('fs');
 const Gallery = require('../models/Gallery');
-const { createStorage } = require('../utils/cloudinary');
+const { createUpload } = require('../utils/cloudinary');
 
-const upload = multer({ storage: createStorage('gallery', ['jpg', 'jpeg', 'png', 'webp', 'gif']) });
+// Note: 'gif' is no longer accepted — the app-wide upload whitelist (see
+// utils/cloudinary.js) covers jpg/jpeg/png/webp/pdf/doc/docx only.
+const upload = createUpload('gallery', ['jpg', 'jpeg', 'png', 'webp']);
 
 // GET /api/gallery — all published items sorted by order then date
 router.get('/', async (req, res) => {
@@ -14,7 +16,7 @@ router.get('/', async (req, res) => {
     const items = await Gallery.find({ published: true }).sort({ order: 1, createdAt: -1 });
     res.json(items);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 
@@ -24,7 +26,7 @@ router.get('/all', async (req, res) => {
     const items = await Gallery.find().sort({ order: 1, createdAt: -1 });
     res.json(items);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 
@@ -108,7 +110,7 @@ router.put('/reorder', async (req, res) => {
     ));
     res.json({ message: 'Order saved' });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 
@@ -153,7 +155,7 @@ router.delete('/:id', async (req, res) => {
     await Gallery.findByIdAndDelete(req.params.id);
     res.json({ message: 'Deleted' });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 

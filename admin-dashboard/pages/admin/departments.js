@@ -249,9 +249,9 @@ export default function DepartmentsList() {
       )}
 
       <div className="ml-0 lg:ml-56 p-8">
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-8">
           <h2 className="text-3xl font-bold text-primary">Manage Departments</h2>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center flex-wrap gap-2">
             {suspended.length > 0 && (
               <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 text-xs font-semibold">
                 <LuPauseCircle size={14} />
@@ -260,7 +260,7 @@ export default function DepartmentsList() {
             )}
             <button
               onClick={() => setShowTrash(true)}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl border text-sm font-semibold transition-colors"
+              className="flex items-center gap-2 px-4 py-2 min-h-11 rounded-xl border text-sm font-semibold transition-colors"
               style={{ borderColor: trashItems.length ? '#fca5a5' : '#e5e7eb', color: trashItems.length ? '#dc2626' : '#6b7280', background: trashItems.length ? '#fef2f2' : '#f9fafb' }}
             >
               <LuTrash2 size={15} />

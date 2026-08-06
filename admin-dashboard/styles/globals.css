@@ -14,7 +14,7 @@ body {
 }
 
 .admin-btn {
-  @apply px-4 py-2 rounded-lg font-semibold transition-all;
+  @apply px-4 py-2 min-h-11 rounded-lg font-semibold transition-all;
 }
 
 .admin-btn-primary {
@@ -26,7 +26,7 @@ body {
 }
 
 .admin-input {
-  @apply w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-primary;
+  @apply w-full px-4 py-2 min-h-11 border border-gray-300 rounded-lg focus:outline-none focus:border-primary;
 }
 
 .admin-table {

@@ -5,19 +5,11 @@ const Program  = require('../models/Program');
 
 // ── Upload setup ─────────────────────────────────────────────────────────────
 
-const { createStorage } = require('../utils/cloudinary');
+const { createUpload } = require('../utils/cloudinary');
 
-const upload = multer({
-  storage: createStorage('programs', ['jpg', 'jpeg', 'png', 'webp']),
-  fileFilter: (req, file, cb) => {
-    const allowedMimes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-    const allowedExts  = /\.(jpg|jpeg|png|webp)$/i;
-    if (allowedMimes.includes(file.mimetype) || allowedExts.test(file.originalname))
-      cb(null, true);
-    else
-      cb(new Error('Only jpg/jpeg/png/webp images are allowed'));
-  },
-}).single('image');
+// createUpload's shared fileFilter already requires BOTH extension and MIME
+// type to match (stricter than this route's old OR-based check).
+const upload = createUpload('programs', ['jpg', 'jpeg', 'png', 'webp']).single('image');
 
 function runUpload(req, res) {
   return new Promise((resolve, reject) =>
@@ -60,7 +52,7 @@ router.get('/', async (req, res) => {
       .sort({ createdAt: -1 });
     res.json(programs);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 
@@ -72,7 +64,7 @@ router.get('/trash', async (req, res) => {
       .sort({ deletedAt: -1 });
     res.json(programs);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 
@@ -83,7 +75,7 @@ router.get('/:id', async (req, res) => {
     if (!program) return res.status(404).json({ message: 'Program not found' });
     res.json(program);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 
@@ -122,7 +114,7 @@ router.patch('/:id/restore', async (req, res) => {
     await Program.findByIdAndUpdate(req.params.id, { deletedAt: null });
     res.json({ message: 'Program restored' });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 
@@ -132,7 +124,7 @@ router.delete('/:id/permanent', async (req, res) => {
     await Program.findByIdAndDelete(req.params.id);
     res.json({ message: 'Program permanently deleted' });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 
@@ -142,7 +134,7 @@ router.delete('/:id', async (req, res) => {
     await Program.findByIdAndUpdate(req.params.id, { deletedAt: new Date() });
     res.json({ message: 'Program moved to trash' });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 

@@ -4,13 +4,24 @@ import axios from 'axios';
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
-const inputCls = 'w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-500 transition-all';
+const inputCls = 'w-full px-4 py-2.5 min-h-11 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-500 transition-all';
 const labelCls = 'block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5';
 
 function Alert({ type, msg }) {
   if (!msg) return null;
   const styles = type === 'error' ? 'bg-red-50 border-l-4 border-red-500 text-red-700' : 'bg-green-50 border-l-4 border-green-500 text-green-700';
   return <div className={`px-4 py-3 rounded-lg text-sm mb-4 ${styles}`}>{msg}</div>;
+}
+
+// Formats an axios error into a single display string, appending
+// field-level validation detail when the API returned it.
+function formatApiError(err, fallback) {
+  const data = err.response?.data;
+  if (!data) return fallback;
+  let detail = '';
+  if (Array.isArray(data.errors)) detail = data.errors.join(' · ');
+  else if (data.errors && typeof data.errors === 'object') detail = Object.values(data.errors).join(' · ');
+  return detail ? `${data.message} ${detail}` : (data.message || fallback);
 }
 
 function StatCard({ label, value, color, sub }) {
@@ -41,9 +52,9 @@ const FEE_BADGE = {
   cancelled:'bg-gray-100 text-gray-600',
 };
 
-const EMPTY_FS = { program: '', department: '', semester: '', academicSession: '', dueDate: '', lateFeePerDay: '0' };
+const EMPTY_FS = { programId: '', departmentId: '', semesterId: '', sessionId: '', dueDate: '', lateFeePerDay: '0' };
 const EMPTY_FS_ITEM = { description: '', amount: '' };
-const EMPTY_GEN = { studentId: '', feeStructureId: '', dueDate: '', lateFeePerDay: '0', bankName: 'Habib Bank Limited (HBL)', bankAccount: 'PK36HABB0002437900614201', bankBranch: 'Panjgur Branch', paymentInstructions: 'Deposit the fee amount in the university bank account and submit the original deposit slip to the Finance Section within the due date.', academicSession: '' };
+const EMPTY_GEN = { studentId: '', feeStructureId: '', dueDate: '', lateFeePerDay: '0', bankName: 'Habib Bank Limited (HBL)', bankAccount: 'PK36HABB0002437900614201', bankBranch: 'Panjgur Branch', paymentInstructions: 'Deposit the fee amount in the university bank account and submit the original deposit slip to the Finance Section within the due date.' };
 
 function fmt(n) { return Number(n || 0).toLocaleString('en-PK', { minimumFractionDigits: 0 }); }
 
@@ -99,6 +110,37 @@ export default function FinancePortal() {
   // Fee stats
   const [feeStats, setFeeStats]           = useState(null);
 
+  // Official-record dropdowns for fee structure creation + report filters
+  const [lkDepartments, setLkDepartments] = useState([]);
+  const [lkPrograms, setLkPrograms]       = useState([]);
+  const [lkSemesters, setLkSemesters]     = useState([]);
+  const [lkSessions, setLkSessions]       = useState([]);
+
+  // Bulk challan generation
+  const [bulkFeeStructureId, setBulkFeeStructureId] = useState('');
+  const [bulkDueDate, setBulkDueDate]     = useState('');
+  const [bulkLateFee, setBulkLateFee]     = useState('0');
+  const [bulkRunning, setBulkRunning]     = useState(false);
+  const [bulkResult, setBulkResult]       = useState(null);
+  const [bulkMsg, setBulkMsg]             = useState({ type: '', text: '' });
+
+  // Outstanding-balance report
+  const [obRows, setObRows]               = useState([]);
+  const [obTotal, setObTotal]             = useState(0);
+  const [obPage, setObPage]               = useState(1);
+  const [obPages, setObPages]             = useState(1);
+  const [obLoading, setObLoading]         = useState(false);
+  const [obDepartment, setObDepartment]   = useState('');
+  const [obGroupBy, setObGroupBy]         = useState('student');
+
+  // Payment recording (paymentRef input for Mark as Paid)
+  const [payRefId, setPayRefId]           = useState(null);
+  const [payRefValue, setPayRefValue]     = useState('');
+
+  // Receipt view
+  const [receipt, setReceipt]             = useState(null);
+  const [receiptLoading, setReceiptLoading] = useState(false);
+
   // Always uses the current token — passed explicitly to avoid stale closures
   function authHeader(tok) { return { headers: { Authorization: `Bearer ${tok}` } }; }
 
@@ -139,6 +181,42 @@ export default function FinancePortal() {
   useEffect(() => { if (tab === 'feeStructure' && token) fetchFeeStructures(token); }, [tab, token]);
   useEffect(() => { if (tab === 'feeRecords'   && token) fetchFeeRecords(token); }, [tab, token]);
   useEffect(() => { if (tab === 'challans'     && token) { fetchChallans(token); fetchFeeStructures(token); } }, [tab, token]);
+  useEffect(() => { if (tab === 'outstanding'  && token) fetchOutstandingBalances(1); }, [tab, token]);
+
+  // Departments + sessions are static lists, fetched once for dropdowns.
+  useEffect(() => {
+    if (!token) return;
+    axios.get(`${API}/lookups/departments`).then(({ data }) => setLkDepartments(data || [])).catch(() => {});
+    axios.get(`${API}/lookups/sessions`).then(({ data }) => setLkSessions(data || [])).catch(() => {});
+  }, [token]);
+
+  // Programs for the fee structure form, scoped to the chosen department.
+  useEffect(() => {
+    if (!fsForm.departmentId) { setLkPrograms([]); return; }
+    axios.get(`${API}/lookups/programs`, { params: { department: fsForm.departmentId } })
+      .then(({ data }) => setLkPrograms(data || [])).catch(() => setLkPrograms([]));
+  }, [fsForm.departmentId]);
+
+  // Semesters for the fee structure form, scoped to the chosen program.
+  useEffect(() => {
+    if (!fsForm.programId) { setLkSemesters([]); return; }
+    axios.get(`${API}/lookups/semesters`, { params: { program: fsForm.programId } })
+      .then(({ data }) => setLkSemesters(data || [])).catch(() => setLkSemesters([]));
+  }, [fsForm.programId]);
+
+  const fetchOutstandingBalances = async (pageNum = 1, groupBy = obGroupBy, department = obDepartment) => {
+    setObLoading(true);
+    try {
+      const params = { page: pageNum, limit: 20, groupBy };
+      if (department) params.department = department;
+      const { data } = await axios.get(`${API}/portal/finance/reports/outstanding-balances`, { ...authHeader(tokenRef.current), params });
+      setObRows(data.data || []);
+      setObTotal(data.total || 0);
+      setObPage(data.page || 1);
+      setObPages(data.pages || 1);
+    } catch { setObRows([]); }
+    setObLoading(false);
+  };
 
   const fetchFeeStats = async (tok) => {
     const t = tok || tokenRef.current;
@@ -164,6 +242,11 @@ export default function FinancePortal() {
     e.preventDefault(); setFsSaving(true); setFsMsg({ type: '', text: '' });
     const validItems = fsItems.filter(i => i.description && Number(i.amount) > 0);
     if (!validItems.length) { setFsMsg({ type: 'error', text: 'Add at least one valid fee item.' }); setFsSaving(false); return; }
+    if (!fsForm.programId || !fsForm.semesterId || !fsForm.sessionId) {
+      setFsMsg({ type: 'error', text: 'Program, semester, and session are required.' });
+      setFsSaving(false);
+      return;
+    }
     try {
       const body = { ...fsForm, feeItems: validItems };
       if (fsEditId) { await axios.patch(`${API}/portal/finance/fee-structures/${fsEditId}`, body, authHeader(tokenRef.current)); }
@@ -171,12 +254,20 @@ export default function FinancePortal() {
       setFsMsg({ type: 'success', text: fsEditId ? 'Fee structure updated.' : 'Fee structure created.' });
       setFsForm(EMPTY_FS); setFsItems([{ ...EMPTY_FS_ITEM }]); setFsEditId(null);
       fetchFeeStructures();
-    } catch (err) { setFsMsg({ type: 'error', text: err.response?.data?.message || 'Error.' }); }
+    } catch (err) { setFsMsg({ type: 'error', text: formatApiError(err, 'Error.') }); }
     setFsSaving(false);
   };
 
   const startEditFS = (s) => {
-    setFsForm({ program: s.program, department: s.department || '', semester: s.semester, academicSession: s.academicSession || '', dueDate: s.dueDate ? s.dueDate.slice(0,10) : '', lateFeePerDay: String(s.lateFeePerDay || 0) });
+    // Ref ids are populated for structures created after the department/
+    // program/semester/session validation was added; older structures may
+    // only have the display-name strings, in which case the dropdowns start
+    // blank and must be re-selected to save changes.
+    setFsForm({
+      programId: s.programId || '', departmentId: s.departmentId || '',
+      semesterId: s.semesterId || '', sessionId: s.sessionId || '',
+      dueDate: s.dueDate ? s.dueDate.slice(0,10) : '', lateFeePerDay: String(s.lateFeePerDay || 0),
+    });
     setFsItems(s.feeItems.length ? s.feeItems.map(i => ({ description: i.description, amount: String(i.amount) })) : [{ ...EMPTY_FS_ITEM }]);
     setFsEditId(s._id);
     setFsMsg({ type: '', text: '' });
@@ -240,21 +331,21 @@ export default function FinancePortal() {
   const onSelectFS = (fsId) => {
     const fs = feeStructures.find(f => f._id === fsId);
     setChnGenForm(p => ({ ...p, feeStructureId: fsId, dueDate: fs?.dueDate ? fs.dueDate.slice(0,10) : p.dueDate, lateFeePerDay: String(fs?.lateFeePerDay ?? p.lateFeePerDay) }));
-    if (fs) setChnGenItems(fs.feeItems.map(i => ({ description: i.description, amount: String(i.amount) })));
+    // Fee items are shown read-only, straight from the structure — a challan
+    // is always billed using the structure's own amounts (see backend).
+    setChnGenItems(fs ? fs.feeItems.map(i => ({ description: i.description, amount: String(i.amount) })) : []);
   };
 
   const handleGenerateChallan = async (e) => {
     e.preventDefault(); setChnGenerating(true); setChnGenMsg({ type: '', text: '' });
     if (!chnGenForm.studentId) { setChnGenMsg({ type: 'error', text: 'Please select a student.' }); setChnGenerating(false); return; }
-    const validItems = chnGenItems.filter(i => i.description && Number(i.amount) > 0);
-    if (!chnGenForm.feeStructureId && !validItems.length) { setChnGenMsg({ type: 'error', text: 'Add at least one fee item or select a fee structure.' }); setChnGenerating(false); return; }
+    if (!chnGenForm.feeStructureId) { setChnGenMsg({ type: 'error', text: 'Please select a fee structure — challans are always generated from one.' }); setChnGenerating(false); return; }
     try {
-      const body = { ...chnGenForm, feeItems: chnGenForm.feeStructureId ? undefined : validItems };
-      const { data } = await axios.post(`${API}/portal/finance/challans`, body, authHeader(tokenRef.current));
+      const { data } = await axios.post(`${API}/portal/finance/challans`, chnGenForm, authHeader(tokenRef.current));
       setChnGenMsg({ type: 'success', text: `Challan ${data.challan.challanNo} generated!` });
-      setChnGenForm(EMPTY_GEN); setChnGenItems([{ ...EMPTY_FS_ITEM }]); setChnGenStudents([]);
+      setChnGenForm(EMPTY_GEN); setChnGenItems([]); setChnGenStudents([]);
       setChnGenSearch(''); fetchChallans(); fetchFeeRecords();
-    } catch (err) { setChnGenMsg({ type: 'error', text: err.response?.data?.message || 'Error.' }); }
+    } catch (err) { setChnGenMsg({ type: 'error', text: formatApiError(err, 'Error.') }); }
     setChnGenerating(false);
   };
 
@@ -263,8 +354,27 @@ export default function FinancePortal() {
     try {
       await axios.patch(`${API}/portal/finance/challans/${id}`, { status, paymentRef }, authHeader(tokenRef.current));
       fetchChallans(); if (chnSelected?._id === id) setChnSelected(p => p ? { ...p, status, paymentRef } : p);
-    } catch (err) { setAlert({ type: 'error', msg: err.response?.data?.message || 'Action failed.' }); }
+    } catch (err) { setAlert({ type: 'error', msg: formatApiError(err, 'Action failed.') }); }
     setChnActing(p => ({ ...p, [id]: false }));
+  };
+
+  // "Mark as Paid" requires a payment reference — the backend rejects the
+  // transition without one — so this opens a small prompt instead of firing
+  // the PATCH directly.
+  const openPayRefPrompt = (id) => { setPayRefId(id); setPayRefValue(''); };
+  const confirmMarkPaid = async () => {
+    if (!payRefValue.trim()) { setAlert({ type: 'error', msg: 'Please enter a payment reference.' }); return; }
+    await handleChallanAction(payRefId, 'paid', payRefValue.trim());
+    setPayRefId(null); setPayRefValue('');
+  };
+
+  const openReceipt = async (id) => {
+    setReceiptLoading(true); setReceipt(null);
+    try {
+      const { data } = await axios.get(`${API}/portal/finance/challans/${id}/receipt`, authHeader(tokenRef.current));
+      setReceipt(data);
+    } catch (err) { setAlert({ type: 'error', msg: err.response?.data?.message || 'Receipt not available.' }); }
+    setReceiptLoading(false);
   };
 
   async function handleLogin(e) {
@@ -364,6 +474,7 @@ export default function FinancePortal() {
     { key: 'feeStructure', label: 'Fee Structure',   icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4' },
     { key: 'feeRecords',   label: 'Fee Records',     icon: 'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z' },
     { key: 'challans',     label: 'Challans',        icon: 'M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z' },
+    { key: 'outstanding',  label: 'Outstanding',     icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
   ];
 
   return (
@@ -512,16 +623,42 @@ export default function FinancePortal() {
                   <h3 className="font-bold text-gray-800 mb-5 text-sm uppercase tracking-wider">{fsEditId ? 'Edit Fee Structure' : 'Create Fee Structure'}</h3>
                   <form onSubmit={handleSaveFS} className="space-y-4">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div><label className={labelCls}>Program *</label><input value={fsForm.program} onChange={e => setFsForm(p => ({ ...p, program: e.target.value }))} required placeholder="e.g. BS Computer Science" className={inputCls} /></div>
-                      <div><label className={labelCls}>Department</label><input value={fsForm.department} onChange={e => setFsForm(p => ({ ...p, department: e.target.value }))} placeholder="e.g. CS" className={inputCls} /></div>
-                      <div><label className={labelCls}>Semester *</label>
-                        <select value={fsForm.semester} onChange={e => setFsForm(p => ({ ...p, semester: e.target.value }))} required className={inputCls}>
-                          <option value="">Select…</option>
-                          {[1,2,3,4,5,6,7,8].map(n => <option key={n} value={`Semester ${n}`}>Semester {n}</option>)}
-                          <option value="Annual">Annual</option>
+                      <div>
+                        <label className={labelCls}>Department</label>
+                        <select value={fsForm.departmentId}
+                          onChange={e => setFsForm(p => ({ ...p, departmentId: e.target.value, programId: '', semesterId: '' }))}
+                          className={inputCls}>
+                          <option value="">— Select department —</option>
+                          {lkDepartments.map(d => <option key={d._id} value={d._id}>{d.name}</option>)}
                         </select>
                       </div>
-                      <div><label className={labelCls}>Session</label><input value={fsForm.academicSession} onChange={e => setFsForm(p => ({ ...p, academicSession: e.target.value }))} placeholder="e.g. Fall 2024" className={inputCls} /></div>
+                      <div>
+                        <label className={labelCls}>Program *</label>
+                        <select value={fsForm.programId} required disabled={!fsForm.departmentId}
+                          onChange={e => setFsForm(p => ({ ...p, programId: e.target.value, semesterId: '' }))}
+                          className={inputCls}>
+                          <option value="">{fsForm.departmentId ? '— Select program —' : 'Select a department first'}</option>
+                          {lkPrograms.map(p => <option key={p._id} value={p._id}>{p.title}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className={labelCls}>Semester *</label>
+                        <select value={fsForm.semesterId} required disabled={!fsForm.programId}
+                          onChange={e => setFsForm(p => ({ ...p, semesterId: e.target.value }))}
+                          className={inputCls}>
+                          <option value="">{fsForm.programId ? '— Select semester —' : 'Select a program first'}</option>
+                          {lkSemesters.map(s => <option key={s._id} value={s._id}>{s.name}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className={labelCls}>Session *</label>
+                        <select value={fsForm.sessionId} required
+                          onChange={e => setFsForm(p => ({ ...p, sessionId: e.target.value }))}
+                          className={inputCls}>
+                          <option value="">— Select session —</option>
+                          {lkSessions.map(s => <option key={s._id} value={s._id}>{s.name}</option>)}
+                        </select>
+                      </div>
                       <div><label className={labelCls}>Due Date</label><input type="date" value={fsForm.dueDate} onChange={e => setFsForm(p => ({ ...p, dueDate: e.target.value }))} className={inputCls} /></div>
                       <div><label className={labelCls}>Late Fee / Day (Rs.)</label><input type="number" min="0" value={fsForm.lateFeePerDay} onChange={e => setFsForm(p => ({ ...p, lateFeePerDay: e.target.value }))} className={inputCls} /></div>
                     </div>
@@ -784,7 +921,8 @@ export default function FinancePortal() {
                 <div className="no-print flex items-center gap-3 mb-6">
                   <button onClick={() => setChnView('list')} className="flex items-center gap-2 text-gray-500 hover:text-gray-800 text-sm font-medium">← Back to Challans</button>
                   <button onClick={() => window.print()} className="ml-auto px-6 py-2.5 bg-emerald-600 text-white font-bold rounded-xl text-sm hover:opacity-90">🖨 Print / Save PDF</button>
-                  {ch.status === 'generated' && <button onClick={() => handleChallanAction(ch._id, 'paid')} disabled={chnActing[ch._id]} className="px-6 py-2.5 bg-green-500 text-white font-bold rounded-xl text-sm hover:opacity-90 disabled:opacity-60">Mark as Paid</button>}
+                  {ch.status === 'generated' && <button onClick={() => openPayRefPrompt(ch._id)} disabled={chnActing[ch._id]} className="px-6 py-2.5 bg-green-500 text-white font-bold rounded-xl text-sm hover:opacity-90 disabled:opacity-60">Mark as Paid</button>}
+                  {ch.status === 'paid' && <button onClick={() => openReceipt(ch._id)} className="px-6 py-2.5 bg-blue-600 text-white font-bold rounded-xl text-sm hover:opacity-90">🧾 View Receipt</button>}
                 </div>
                 {/* Screen preview wrapper */}
                 <div style={{ overflowX: 'auto' }}>
@@ -831,37 +969,32 @@ export default function FinancePortal() {
                       {!chnGenStudents.length && chnGenSearch && !chnGenSearching && !chnGenForm.studentId && <p className="text-xs text-gray-400 mt-1">Click Find to search students.</p>}
                     </div>
 
-                    {/* Fee Structure */}
+                    {/* Fee Structure — challans are always billed using a
+                        structure's own amounts, never free-typed ones */}
                     <div>
-                      <label className={labelCls}>Fee Structure (optional)</label>
-                      <select value={chnGenForm.feeStructureId} onChange={e => onSelectFS(e.target.value)} className={inputCls}>
-                        <option value="">Manual entry below</option>
+                      <label className={labelCls}>Fee Structure *</label>
+                      <select value={chnGenForm.feeStructureId} required onChange={e => onSelectFS(e.target.value)} className={inputCls}>
+                        <option value="">— Select fee structure —</option>
                         {feeStructures.map(f => <option key={f._id} value={f._id}>{f.program} · {f.semester}{f.academicSession ? ` · ${f.academicSession}` : ''} — Rs.{fmt(f.totalAmount)}</option>)}
                       </select>
                     </div>
 
-                    {/* Manual fee items (shown when no structure selected) */}
-                    {!chnGenForm.feeStructureId && (
-                      <div>
-                        <div className="flex items-center justify-between mb-2">
-                          <label className={labelCls + ' mb-0'}>Fee Items *</label>
-                          <button type="button" onClick={() => setChnGenItems(p => [...p, { ...EMPTY_FS_ITEM }])} className="text-xs text-emerald-600 font-bold hover:underline">+ Add Item</button>
-                        </div>
+                    {/* Read-only preview of the structure's fee items */}
+                    {chnGenItems.length > 0 && (
+                      <div className="bg-gray-50 rounded-xl p-3 space-y-1">
                         {chnGenItems.map((item, idx) => (
-                          <div key={idx} className="flex gap-2 mb-2">
-                            <input value={item.description} onChange={e => setChnGenItems(p => p.map((x, i) => i === idx ? { ...x, description: e.target.value } : x))} placeholder="Description" className="flex-1 px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200" />
-                            <input type="number" min="0" value={item.amount} onChange={e => setChnGenItems(p => p.map((x, i) => i === idx ? { ...x, amount: e.target.value } : x))} placeholder="Amount" className="w-28 px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200" />
-                            {chnGenItems.length > 1 && <button type="button" onClick={() => setChnGenItems(p => p.filter((_, i) => i !== idx))} className="text-red-400 hover:text-red-600 text-lg px-1">×</button>}
+                          <div key={idx} className="flex justify-between text-sm">
+                            <span className="text-gray-600">{item.description}</span>
+                            <span className="font-mono text-gray-700">Rs. {fmt(item.amount)}</span>
                           </div>
                         ))}
-                        {chnGenItems.length > 0 && <p className="text-xs text-gray-500 text-right">Total: Rs. {fmt(chnGenItems.reduce((s, i) => s + (Number(i.amount)||0), 0))}</p>}
+                        <p className="text-xs text-gray-500 text-right pt-1 border-t border-gray-200">Total: <strong>Rs. {fmt(chnGenItems.reduce((s, i) => s + (Number(i.amount)||0), 0))}</strong></p>
                       </div>
                     )}
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div><label className={labelCls}>Due Date</label><input type="date" value={chnGenForm.dueDate} onChange={e => setChnGenForm(p => ({ ...p, dueDate: e.target.value }))} className={inputCls} /></div>
+                      <div><label className={labelCls}>Due Date</label><input type="date" value={chnGenForm.dueDate} onChange={e => setChnGenForm(p => ({ ...p, dueDate: e.target.value }))} className={inputCls} placeholder="Defaults to fee structure's due date" /></div>
                       <div><label className={labelCls}>Late Fee/Day (Rs.)</label><input type="number" min="0" value={chnGenForm.lateFeePerDay} onChange={e => setChnGenForm(p => ({ ...p, lateFeePerDay: e.target.value }))} className={inputCls} /></div>
-                      <div><label className={labelCls}>Session</label><input value={chnGenForm.academicSession} onChange={e => setChnGenForm(p => ({ ...p, academicSession: e.target.value }))} placeholder="Fall 2024" className={inputCls} /></div>
                     </div>
                     <details className="group">
                       <summary className="text-xs text-emerald-600 font-bold cursor-pointer hover:underline">Bank Details (click to expand)</summary>
@@ -874,6 +1007,49 @@ export default function FinancePortal() {
                     </details>
                     <button type="submit" disabled={chnGenerating} className="w-full py-2.5 bg-emerald-600 text-white font-bold rounded-xl text-sm hover:opacity-90 disabled:opacity-60">{chnGenerating ? 'Generating…' : 'Generate Challan'}</button>
                   </form>
+                </div>
+
+                {/* Bulk generation */}
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 xl:col-span-2">
+                  <h3 className="font-bold text-gray-800 mb-1 text-sm uppercase tracking-wider">Bulk Generate</h3>
+                  <p className="text-xs text-gray-400 mb-4">Generates a challan for every approved student in the fee structure's program + semester scope. Students already billed against this structure are skipped.</p>
+                  {bulkMsg.text && <div className={`px-4 py-3 rounded-lg text-sm mb-4 ${bulkMsg.type === 'error' ? 'bg-red-50 border-l-4 border-red-500 text-red-700' : 'bg-green-50 border-l-4 border-green-500 text-green-700'}`}>{bulkMsg.text}</div>}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
+                    <div className="sm:col-span-1">
+                      <label className={labelCls}>Fee Structure *</label>
+                      <select value={bulkFeeStructureId} onChange={e => setBulkFeeStructureId(e.target.value)} className={inputCls}>
+                        <option value="">— Select fee structure —</option>
+                        {feeStructures.map(f => <option key={f._id} value={f._id}>{f.program} · {f.semester}{f.academicSession ? ` · ${f.academicSession}` : ''} — Rs.{fmt(f.totalAmount)}</option>)}
+                      </select>
+                    </div>
+                    <div><label className={labelCls}>Due Date</label><input type="date" value={bulkDueDate} onChange={e => setBulkDueDate(e.target.value)} className={inputCls} /></div>
+                    <div><label className={labelCls}>Late Fee/Day (Rs.)</label><input type="number" min="0" value={bulkLateFee} onChange={e => setBulkLateFee(e.target.value)} className={inputCls} /></div>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      if (!bulkFeeStructureId) { setBulkMsg({ type: 'error', text: 'Please select a fee structure.' }); return; }
+                      setBulkRunning(true); setBulkMsg({ type: '', text: '' }); setBulkResult(null);
+                      try {
+                        const body = { feeStructureId: bulkFeeStructureId, dueDate: bulkDueDate || undefined, lateFeePerDay: bulkLateFee };
+                        const { data } = await axios.post(`${API}/portal/finance/challans/bulk`, body, authHeader(tokenRef.current));
+                        setBulkResult(data);
+                        setBulkMsg({ type: 'success', text: data.message });
+                        fetchChallans(); fetchFeeRecords();
+                      } catch (err) { setBulkMsg({ type: 'error', text: formatApiError(err, 'Bulk generation failed.') }); }
+                      setBulkRunning(false);
+                    }}
+                    disabled={bulkRunning}
+                    className="mt-4 px-6 py-2.5 bg-emerald-700 text-white font-bold rounded-xl text-sm hover:opacity-90 disabled:opacity-60"
+                  >
+                    {bulkRunning ? 'Generating…' : '⚡ Bulk Generate Challans'}
+                  </button>
+                  {bulkResult && (
+                    <div className="mt-4 grid grid-cols-3 gap-3 text-center">
+                      <div className="bg-green-50 rounded-xl p-3"><p className="text-2xl font-black text-green-700">{bulkResult.generated}</p><p className="text-xs text-green-600">Generated</p></div>
+                      <div className="bg-gray-50 rounded-xl p-3"><p className="text-2xl font-black text-gray-600">{bulkResult.skipped}</p><p className="text-xs text-gray-500">Already Billed</p></div>
+                      <div className="bg-red-50 rounded-xl p-3"><p className="text-2xl font-black text-red-600">{bulkResult.failed}</p><p className="text-xs text-red-500">Failed</p></div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Challan list */}
@@ -910,7 +1086,10 @@ export default function FinancePortal() {
                             <div className="flex flex-col gap-1.5 shrink-0">
                               <button onClick={() => { setChnSelected(ch); setChnView('print'); }} className="text-xs text-emerald-600 font-bold px-3 py-1.5 border border-emerald-200 rounded-lg hover:bg-emerald-50 whitespace-nowrap">Print</button>
                               {ch.status === 'generated' && (
-                                <button onClick={() => handleChallanAction(ch._id, 'paid')} disabled={chnActing[ch._id]} className="text-xs text-green-700 font-bold px-3 py-1.5 border border-green-200 rounded-lg hover:bg-green-50 whitespace-nowrap disabled:opacity-50">Mark Paid</button>
+                                <button onClick={() => openPayRefPrompt(ch._id)} disabled={chnActing[ch._id]} className="text-xs text-green-700 font-bold px-3 py-1.5 border border-green-200 rounded-lg hover:bg-green-50 whitespace-nowrap disabled:opacity-50">Mark Paid</button>
+                              )}
+                              {ch.status === 'paid' && (
+                                <button onClick={() => openReceipt(ch._id)} className="text-xs text-blue-700 font-bold px-3 py-1.5 border border-blue-200 rounded-lg hover:bg-blue-50 whitespace-nowrap">🧾 Receipt</button>
                               )}
                               {ch.status === 'generated' && (
                                 <button onClick={() => handleChallanAction(ch._id, 'expired')} disabled={chnActing[ch._id]} className="text-xs text-orange-600 font-bold px-3 py-1.5 border border-orange-200 rounded-lg hover:bg-orange-50 whitespace-nowrap disabled:opacity-50">Expire</button>
@@ -927,7 +1106,168 @@ export default function FinancePortal() {
           );
         })()}
 
+        {/* ── Outstanding Balances Report ──────────────────────────────────────── */}
+        {tab === 'outstanding' && (
+          <>
+            <h2 className="text-2xl font-bold text-gray-800 mb-1">Outstanding Balances</h2>
+            <p className="text-gray-500 text-sm mb-6">Unpaid challan totals per student, or rolled up per department.</p>
+
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-5 flex flex-wrap gap-3 items-end">
+              <div>
+                <label className={labelCls}>Department</label>
+                <select value={obDepartment}
+                  onChange={e => { setObDepartment(e.target.value); fetchOutstandingBalances(1, obGroupBy, e.target.value); }}
+                  className="px-3 py-2 border border-gray-200 rounded-xl text-xs bg-white focus:outline-none focus:ring-2 focus:ring-emerald-200">
+                  <option value="">All Departments</option>
+                  {lkDepartments.map(d => <option key={d._id} value={d._id}>{d.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={labelCls}>Group By</label>
+                <select value={obGroupBy}
+                  onChange={e => { setObGroupBy(e.target.value); fetchOutstandingBalances(1, e.target.value, obDepartment); }}
+                  className="px-3 py-2 border border-gray-200 rounded-xl text-xs bg-white focus:outline-none focus:ring-2 focus:ring-emerald-200">
+                  <option value="student">Per Student</option>
+                  <option value="department">Per Department</option>
+                </select>
+              </div>
+              <span className="text-xs text-gray-400 ml-auto">{obTotal} record{obTotal !== 1 ? 's' : ''}</span>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+              {obLoading ? (
+                <div className="p-12 text-center"><div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto" /></div>
+              ) : obRows.length === 0 ? (
+                <div className="p-12 text-center text-gray-400 text-sm">No outstanding balances found.</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 border-b border-gray-100">
+                      <tr>
+                        {(obGroupBy === 'department'
+                          ? ['Department', 'Outstanding Amount', 'Unpaid Challans']
+                          : ['Reg No', 'Student', 'Department', 'Program', 'Semester', 'Outstanding Amount', 'Unpaid Challans']
+                        ).map(h => <th key={h} className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider whitespace-nowrap">{h}</th>)}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {obRows.map((row, i) => (
+                        <tr key={row._id || i} className="hover:bg-gray-50/50 transition-colors">
+                          {obGroupBy === 'department' ? (
+                            <td className="px-4 py-3 font-semibold text-gray-800">{row.department || '—'}</td>
+                          ) : (
+                            <>
+                              <td className="px-4 py-3 font-mono text-xs text-gray-600 whitespace-nowrap">{row.registrationNo}</td>
+                              <td className="px-4 py-3 font-semibold text-gray-800 whitespace-nowrap">{row.studentName}</td>
+                              <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{row.department || '—'}</td>
+                              <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{row.program || '—'}</td>
+                              <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{row.semester || '—'}</td>
+                            </>
+                          )}
+                          <td className="px-4 py-3 font-bold text-red-600 whitespace-nowrap">Rs. {fmt(row.outstandingAmount)}</td>
+                          <td className="px-4 py-3 text-center text-gray-600">{row.unpaidChallans}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {obPages > 1 && (
+                    <div className="flex items-center justify-between px-5 py-3 border-t border-gray-100">
+                      <button disabled={obPage <= 1} onClick={() => fetchOutstandingBalances(obPage - 1)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-600 border border-gray-200 disabled:opacity-40 hover:bg-gray-50">← Prev</button>
+                      <span className="text-xs text-gray-400">Page {obPage} of {obPages}</span>
+                      <button disabled={obPage >= obPages} onClick={() => fetchOutstandingBalances(obPage + 1)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-600 border border-gray-200 disabled:opacity-40 hover:bg-gray-50">Next →</button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
       </main>
+
+      {/* Payment reference prompt — required before a challan can be marked paid */}
+      {payRefId && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm">
+            <h3 className="font-bold text-gray-800 text-lg mb-1">Record Payment</h3>
+            <p className="text-gray-500 text-sm mb-4">Enter the payment reference (bank deposit slip no., transaction id, etc.) to mark this challan as paid.</p>
+            <div className="mb-4">
+              <label className={labelCls}>Payment Reference *</label>
+              <input value={payRefValue} onChange={e => setPayRefValue(e.target.value)} autoFocus
+                className={inputCls} placeholder="e.g. HBL-DEP-00123" />
+            </div>
+            <div className="flex gap-3">
+              <button onClick={confirmMarkPaid} disabled={!!chnActing[payRefId]}
+                className="flex-1 bg-green-600 text-white py-2.5 rounded-xl font-bold text-sm hover:bg-green-700 transition disabled:opacity-50">
+                {chnActing[payRefId] ? 'Saving…' : 'Confirm Payment'}
+              </button>
+              <button onClick={() => { setPayRefId(null); setPayRefValue(''); }}
+                className="flex-1 border border-gray-300 text-gray-600 py-2.5 rounded-xl font-bold text-sm hover:bg-gray-50 transition">
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Receipt view */}
+      {(receiptLoading || receipt) && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => { setReceipt(null); }}>
+          <style>{`
+            @media print {
+              @page { size: A4; margin: 12mm; }
+              body * { visibility: hidden !important; }
+              #finance-receipt-print, #finance-receipt-print * { visibility: visible !important; }
+              #finance-receipt-print { position: fixed !important; top: 0 !important; left: 0 !important; width: 100% !important; box-shadow: none !important; border-radius: 0 !important; }
+              .no-print { display: none !important; }
+            }
+          `}</style>
+          <div id="finance-receipt-print" className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
+            {receiptLoading ? (
+              <div className="p-12 text-center"><div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto" /></div>
+            ) : receipt && (
+              <>
+                <div style={{ background: 'linear-gradient(135deg, #15803d 0%, #16a34a 100%)', padding: '20px 28px' }} className="flex items-center justify-between">
+                  <div>
+                    <p className="text-green-100 text-xs font-semibold uppercase tracking-widest">University of Makran, Panjgur</p>
+                    <h3 className="text-white text-lg font-extrabold">PAYMENT RECEIPT</h3>
+                  </div>
+                  <span className="px-3 py-1 rounded-full text-xs font-bold bg-white text-green-700">✓ PAID</span>
+                </div>
+                <div className="p-6 space-y-3">
+                  <div className="flex justify-between text-sm"><span className="text-gray-400">Challan No.</span><span className="font-mono font-bold">{receipt.challanNo}</span></div>
+                  <div className="flex justify-between text-sm"><span className="text-gray-400">Student</span><span className="font-semibold">{receipt.studentName} ({receipt.registrationNo})</span></div>
+                  <div className="flex justify-between text-sm"><span className="text-gray-400">Program / Semester</span><span>{receipt.program} · {receipt.semester}</span></div>
+                  <div className="flex justify-between text-sm"><span className="text-gray-400">Payment Date</span><span className="font-semibold">{receipt.paidAt ? new Date(receipt.paidAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : 'N/A'}</span></div>
+                  <div className="flex justify-between text-sm"><span className="text-gray-400">Payment Reference</span><span className="font-mono font-semibold">{receipt.paymentRef || 'N/A'}</span></div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm mt-2 border-collapse">
+                      <tbody>
+                        {receipt.feeItems.map((it, i) => (
+                          <tr key={i} className="border-b border-gray-50">
+                            <td className="py-1.5 text-gray-600">{it.description}</td>
+                            <td className="py-1.5 text-right font-mono">{fmt(it.amount)}</td>
+                          </tr>
+                        ))}
+                        <tr className="bg-green-600 text-white font-bold">
+                          <td className="py-2 px-2 rounded-l-lg">AMOUNT PAID</td>
+                          <td className="py-2 px-2 rounded-r-lg text-right font-mono">Rs. {fmt(receipt.totalAmount)}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="no-print flex gap-3 pt-2">
+                    <button onClick={() => window.print()} className="flex-1 py-2.5 min-h-11 bg-emerald-600 text-white font-bold rounded-xl text-sm hover:opacity-90">🖨 Print</button>
+                    <button onClick={() => setReceipt(null)} className="flex-1 py-2.5 min-h-11 border border-gray-200 text-gray-600 font-bold rounded-xl text-sm hover:bg-gray-50">Close</button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

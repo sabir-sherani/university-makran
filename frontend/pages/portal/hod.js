@@ -4,7 +4,7 @@ import axios from 'axios';
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
-const inputCls  = 'w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500 transition-all';
+const inputCls  = 'w-full px-4 py-2.5 min-h-11 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-500 transition-all';
 const labelCls  = 'block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5';
 
 function Alert({ type, msg }) {
@@ -59,12 +59,19 @@ export default function HODPortal() {
   // Dept Notices
   const [notices, setNotices]               = useState([]);
   const [noticeLoading, setNoticeLoading]   = useState(false);
-  const [noticeForm, setNoticeForm]         = useState({ title: '', body: '', priority: 'normal', isPublished: true });
+  const [noticeForm, setNoticeForm]         = useState({
+    title: '', body: '', priority: 'normal', isPublished: true,
+    publishAt: '', expiresAt: '',
+    audience: { programs: [], semesters: [], roles: [] },
+  });
   const [noticeEditing, setNoticeEditing]   = useState(null);
   const [noticeSaving, setNoticeSaving]     = useState(false);
   const [noticeError, setNoticeError]       = useState('');
   const [noticeSuccess, setNoticeSuccess]   = useState('');
   const [showNoticeForm, setShowNoticeForm] = useState(false);
+  const [noticePrograms, setNoticePrograms] = useState([]);
+  const [noticeFiles, setNoticeFiles]       = useState([]); // File[] queued for upload
+  const [noticeRemoveAttachments, setNoticeRemoveAttachments] = useState([]); // fileUrls to drop on save
 
   function headers(tok) { return { headers: { Authorization: `Bearer ${tok || token}` } }; }
 
@@ -98,6 +105,13 @@ export default function HODPortal() {
   useEffect(() => { if (tab === 'results'         && token) fetchDeptSheets(token); }, [tab, token]);
   useEffect(() => { if (tab === 'ongoingClasses'  && token) fetchOngoingClasses(); }, [tab, token]);
   useEffect(() => { if (tab === 'notices'         && token) fetchNotices(); }, [tab, token]);
+  useEffect(() => {
+    if (tab === 'notices' && token && hod?.departmentId) {
+      axios.get(`${API}/lookups/programs`, { params: { department: hod.departmentId } })
+        .then(({ data }) => setNoticePrograms(data || []))
+        .catch(() => setNoticePrograms([]));
+    }
+  }, [tab, token, hod]);
 
   const fetchOngoingClasses = async (filter) => {
     setOcLoading(true);
@@ -152,35 +166,75 @@ export default function HODPortal() {
     setNoticeLoading(false);
   };
 
+  const emptyNoticeForm = () => ({
+    title: '', body: '', priority: 'normal', isPublished: true,
+    publishAt: '', expiresAt: '',
+    audience: { programs: [], semesters: [], roles: [] },
+  });
+
   const openNewNotice = () => {
     setNoticeEditing(null);
-    setNoticeForm({ title: '', body: '', priority: 'normal', isPublished: true });
+    setNoticeForm(emptyNoticeForm());
+    setNoticeFiles([]);
+    setNoticeRemoveAttachments([]);
     setNoticeError(''); setNoticeSuccess('');
     setShowNoticeForm(true);
   };
 
   const openEditNotice = (n) => {
     setNoticeEditing(n);
-    setNoticeForm({ title: n.title, body: n.body || '', priority: n.priority, isPublished: n.isPublished });
+    setNoticeForm({
+      title: n.title, body: n.body || '', priority: n.priority, isPublished: n.isPublished,
+      publishAt: n.publishAt ? new Date(n.publishAt).toISOString().slice(0, 10) : '',
+      expiresAt: n.expiresAt ? new Date(n.expiresAt).toISOString().slice(0, 10) : '',
+      audience: {
+        programs: (n.audience?.programs || []).map(String),
+        semesters: n.audience?.semesters || [],
+        roles: n.audience?.roles || [],
+      },
+    });
+    setNoticeFiles([]);
+    setNoticeRemoveAttachments([]);
     setNoticeError(''); setNoticeSuccess('');
     setShowNoticeForm(true);
   };
+
+  function toggleNoticeAudienceValue(key, value) {
+    setNoticeForm(f => {
+      const current = f.audience[key];
+      const next = current.includes(value) ? current.filter(v => v !== value) : [...current, value];
+      return { ...f, audience: { ...f.audience, [key]: next } };
+    });
+  }
 
   const handleSaveNotice = async (e) => {
     e.preventDefault();
     setNoticeSaving(true); setNoticeError(''); setNoticeSuccess('');
     try {
+      const fd = new FormData();
+      fd.append('title', noticeForm.title);
+      fd.append('body', noticeForm.body);
+      fd.append('priority', noticeForm.priority);
+      fd.append('isPublished', String(noticeForm.isPublished));
+      if (noticeForm.publishAt) fd.append('publishAt', noticeForm.publishAt);
+      if (noticeForm.expiresAt) fd.append('expiresAt', noticeForm.expiresAt);
+      fd.append('audience', JSON.stringify(noticeForm.audience));
+      noticeFiles.forEach(f => fd.append('files', f));
+      if (noticeRemoveAttachments.length) fd.append('removeAttachments', JSON.stringify(noticeRemoveAttachments));
+
       if (noticeEditing) {
-        const { data } = await axios.patch(`${API}/portal/hod/notices/${noticeEditing._id}`, noticeForm, headers());
+        const { data } = await axios.patch(`${API}/portal/hod/notices/${noticeEditing._id}`, fd, headers());
         setNotices(prev => prev.map(n => n._id === noticeEditing._id ? data : n));
         setNoticeSuccess('Notice updated.');
       } else {
-        const { data } = await axios.post(`${API}/portal/hod/notices`, noticeForm, headers());
+        const { data } = await axios.post(`${API}/portal/hod/notices`, fd, headers());
         setNotices(prev => [data, ...prev]);
         setNoticeSuccess('Notice posted.');
       }
       setShowNoticeForm(false);
       setNoticeEditing(null);
+      setNoticeFiles([]);
+      setNoticeRemoveAttachments([]);
     } catch (err) { setNoticeError(err.response?.data?.message || 'Failed to save.'); }
     setNoticeSaving(false);
   };
@@ -451,9 +505,9 @@ export default function HODPortal() {
             const failCount = entries.filter(e => e.resultStatus === 'Fail').length;
             return (
               <div>
-                <div className="flex items-center justify-between mb-6 hod-no-print">
+                <div className="flex flex-wrap items-center justify-between gap-3 mb-6 hod-no-print">
                   <button onClick={() => setDsDetail(null)} className="flex items-center gap-2 text-gray-500 hover:text-gray-800 text-sm font-medium">← Back to Results</button>
-                  <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg text-white" style={{background:'#041476'}}>
+                  <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 min-h-11 text-sm font-semibold rounded-lg text-white" style={{background:'#041476'}}>
                     🖨️ Print / Export PDF
                   </button>
                 </div>
@@ -797,13 +851,13 @@ export default function HODPortal() {
         {tab === 'notices' && (
           <div className="space-y-5">
             {/* Header */}
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <h2 className="text-2xl font-bold text-indigo-900">Department Notices</h2>
                 <p className="text-sm text-gray-500 mt-0.5">Post notices for students of your department. They will appear in the student portal.</p>
               </div>
               <button onClick={openNewNotice}
-                className="bg-indigo-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-indigo-800 transition">
+                className="shrink-0 bg-indigo-700 text-white px-5 py-2.5 min-h-11 rounded-xl text-sm font-bold hover:bg-indigo-800 transition">
                 + New Notice
               </button>
             </div>
@@ -845,6 +899,79 @@ export default function HODPortal() {
                       <label htmlFor="noticePublished" className="text-sm font-medium text-gray-700">Publish immediately (visible to students)</label>
                     </div>
                   </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className={labelCls}>Publish Date</label>
+                      <input type="date" value={noticeForm.publishAt}
+                        onChange={e => setNoticeForm(f => ({ ...f, publishAt: e.target.value }))}
+                        className={inputCls} />
+                      <p className="text-xs text-gray-400 mt-1">Leave blank to publish immediately.</p>
+                    </div>
+                    <div>
+                      <label className={labelCls}>Expiry Date</label>
+                      <input type="date" value={noticeForm.expiresAt}
+                        onChange={e => setNoticeForm(f => ({ ...f, expiresAt: e.target.value }))}
+                        className={inputCls} />
+                      <p className="text-xs text-gray-400 mt-1">Leave blank to never expire.</p>
+                    </div>
+                  </div>
+
+                  <div className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-4 space-y-3">
+                    <p className="text-xs font-bold text-indigo-800 uppercase tracking-wider">Audience — leave a group empty to target everyone in your department</p>
+                    <div>
+                      <p className="text-xs font-semibold text-gray-600 mb-1.5">Programs</p>
+                      {noticePrograms.length === 0 ? (
+                        <p className="text-xs text-gray-400">No programs found for your department.</p>
+                      ) : (
+                        <div className="flex flex-wrap gap-2">
+                          {noticePrograms.map(p => (
+                            <label key={p._id} className={`px-3 py-1.5 rounded-lg text-xs font-semibold border cursor-pointer transition ${noticeForm.audience.programs.includes(p._id) ? 'bg-indigo-700 text-white border-indigo-700' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                              <input type="checkbox" className="hidden" checked={noticeForm.audience.programs.includes(p._id)}
+                                onChange={() => toggleNoticeAudienceValue('programs', p._id)} />
+                              {p.title}
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-gray-600 mb-1.5">Semesters</p>
+                      <div className="flex flex-wrap gap-2">
+                        {[1, 2, 3, 4, 5, 6, 7, 8].map(sem => (
+                          <label key={sem} className={`w-9 h-9 flex items-center justify-center rounded-lg text-xs font-bold border cursor-pointer transition ${noticeForm.audience.semesters.includes(sem) ? 'bg-indigo-700 text-white border-indigo-700' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>
+                            <input type="checkbox" className="hidden" checked={noticeForm.audience.semesters.includes(sem)}
+                              onChange={() => toggleNoticeAudienceValue('semesters', sem)} />
+                            {sem}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className={labelCls}>Attach Files</label>
+                    <input type="file" multiple accept=".jpg,.jpeg,.png,.webp,.pdf,.doc,.docx"
+                      onChange={e => setNoticeFiles(Array.from(e.target.files || []))}
+                      className="block w-full text-sm text-gray-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-indigo-50 file:text-indigo-700 file:font-semibold hover:file:bg-indigo-100" />
+                    {noticeFiles.length > 0 && (
+                      <p className="text-xs text-gray-500 mt-1">{noticeFiles.length} file(s) selected: {noticeFiles.map(f => f.name).join(', ')}</p>
+                    )}
+                    {noticeEditing?.attachments?.length > 0 && (
+                      <div className="mt-2 space-y-1">
+                        <p className="text-xs font-semibold text-gray-500">Existing attachments (check to remove):</p>
+                        {noticeEditing.attachments.map((att, i) => (
+                          <label key={i} className="flex items-center gap-2 text-xs text-gray-600">
+                            <input type="checkbox" checked={noticeRemoveAttachments.includes(att.fileUrl)}
+                              onChange={() => setNoticeRemoveAttachments(prev => prev.includes(att.fileUrl) ? prev.filter(u => u !== att.fileUrl) : [...prev, att.fileUrl])}
+                              className="w-3.5 h-3.5 accent-red-600" />
+                            <span className={noticeRemoveAttachments.includes(att.fileUrl) ? 'line-through text-red-500' : ''}>{att.fileName || att.fileUrl}</span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
                   <div className="flex gap-3">
                     <button type="submit" disabled={noticeSaving}
                       className="bg-indigo-700 text-white px-6 py-2.5 rounded-xl text-sm font-bold hover:bg-indigo-800 transition disabled:opacity-60">
@@ -875,6 +1002,11 @@ export default function HODPortal() {
                                       : n.priority === 'important' ? 'border-l-4 border-orange-400 bg-orange-50'
                                       : 'border-l-4 border-indigo-300 bg-white';
                   const priorityLabel = n.priority === 'urgent' ? '🔴 Urgent' : n.priority === 'important' ? '🟠 Important' : '🔵 Normal';
+                  const audiencePrograms = (n.audience?.programs || [])
+                    .map(id => noticePrograms.find(p => p._id === id)?.title)
+                    .filter(Boolean);
+                  const audienceSemesters = n.audience?.semesters || [];
+                  const isFuturePublish = n.publishAt && new Date(n.publishAt) > new Date();
                   return (
                     <div key={n._id} className={`rounded-2xl shadow-sm p-5 ${priorityStyle}`}>
                       <div className="flex items-start justify-between gap-3">
@@ -884,10 +1016,39 @@ export default function HODPortal() {
                             {!n.isPublished && (
                               <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-gray-200 text-gray-600">Draft</span>
                             )}
-                            <span className="text-xs text-gray-400">{new Date(n.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                            {isFuturePublish && (
+                              <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-700">Scheduled</span>
+                            )}
+                            <span className="text-xs text-gray-400">
+                              Publishes {new Date(n.publishAt || n.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                            </span>
+                            {n.expiresAt && (
+                              <span className="text-xs text-gray-400">· Expires {new Date(n.expiresAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                            )}
                           </div>
                           <h3 className="font-bold text-gray-900 text-base">{n.title}</h3>
                           {n.body && <p className="text-sm text-gray-600 mt-1 whitespace-pre-line">{n.body}</p>}
+                          {(audiencePrograms.length > 0 || audienceSemesters.length > 0) && (
+                            <div className="flex flex-wrap gap-1.5 mt-2">
+                              {audiencePrograms.map(p => (
+                                <span key={p} className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-medium">{p}</span>
+                              ))}
+                              {audienceSemesters.map(s => (
+                                <span key={s} className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-medium">Sem {s}</span>
+                              ))}
+                            </div>
+                          )}
+                          {n.attachments?.length > 0 && (
+                            <div className="flex flex-wrap gap-2 mt-2">
+                              {n.attachments.map((att, i) => (
+                                <a key={i} href={att.fileUrl.startsWith('http') ? att.fileUrl : `${API.replace(/\/api$/, '')}${att.fileUrl}`}
+                                  target="_blank" rel="noreferrer"
+                                  className="text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2.5 py-1 rounded-lg hover:bg-indigo-100 transition">
+                                  📎 {att.fileName || 'attachment'}
+                                </a>
+                              ))}
+                            </div>
+                          )}
                         </div>
                         <div className="flex gap-2 flex-shrink-0">
                           <button onClick={() => openEditNotice(n)}

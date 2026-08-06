@@ -1,7 +1,8 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import Image from 'next/image';
+import { useRouter } from 'next/router';
 import AdminHeader from '../../components/AdminHeader';
 import axios from 'axios';
 import {
@@ -16,52 +17,22 @@ import {
   LuNewspaper,
   LuArrowRight,
   LuTrendingUp,
+  LuShieldCheck,
+  LuFileEdit,
+  LuReceipt,
+  LuHistory,
+  LuUserPlus,
 } from 'react-icons/lu';
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
-// ── Stat cards config ─────────────────────────────────────────────────────────
+function getAdminToken() {
+  if (typeof window === 'undefined') return '';
+  return localStorage.getItem('adminToken') || localStorage.getItem('token') || '';
+}
+function authHeaders() { return { headers: { Authorization: `Bearer ${getAdminToken()}` } }; }
 
-const STAT_CARDS = [
-  {
-    key: 'students',
-    label: 'Total Students',
-    Icon: LuUsers,
-    accent: '#2563eb',
-    iconBg: '#eff6ff',
-    bar: 'from-blue-500 to-blue-600',
-    border: 'border-blue-100',
-  },
-  {
-    key: 'faculty',
-    label: 'Faculty Members',
-    Icon: LuUserCheck,
-    accent: '#059669',
-    iconBg: '#ecfdf5',
-    bar: 'from-emerald-500 to-emerald-600',
-    border: 'border-emerald-100',
-  },
-  {
-    key: 'programs',
-    label: 'Programs',
-    Icon: LuGraduationCap,
-    accent: '#7c3aed',
-    iconBg: '#f5f3ff',
-    bar: 'from-violet-500 to-violet-600',
-    border: 'border-violet-100',
-  },
-  {
-    key: 'applications',
-    label: 'New Applications',
-    Icon: LuClipboardList,
-    accent: '#ea580c',
-    iconBg: '#fff7ed',
-    bar: 'from-orange-500 to-orange-600',
-    border: 'border-orange-100',
-  },
-];
-
-// ── Quick action cards config ─────────────────────────────────────────────────
+// ── Quick action cards config (content / site management) ────────────────────
 
 const ACTIONS = [
   {
@@ -130,13 +101,45 @@ const ACTIONS = [
   },
 ];
 
-const STATUS_STYLE = {
-  pending:  'bg-yellow-50 text-yellow-700 border border-yellow-200',
-  approved: 'bg-green-50  text-green-700  border border-green-200',
-  rejected: 'bg-red-50    text-red-700    border border-red-200',
-};
+// ── Operational "needs attention" quick links ─────────────────────────────────
 
-// ── Action card component ─────────────────────────────────────────────────────
+function buildAttentionLinks(stats) {
+  return [
+    {
+      label: 'Pending Student Approvals',
+      href: '/admin/students?status=pending',
+      count: stats.pendingStudents || 0,
+      Icon: LuUserPlus,
+      accent: '#d97706',
+      iconBg: '#fffbeb',
+    },
+    {
+      label: 'Pending Teacher Approvals',
+      href: '/admin/teachers?status=pending',
+      count: stats.pendingTeachers || 0,
+      Icon: LuUserCheck,
+      accent: '#d97706',
+      iconBg: '#fffbeb',
+    },
+    {
+      label: 'Correction Requests',
+      href: '/admin/correction-requests',
+      count: stats.pendingCorrectionRequests || 0,
+      Icon: LuFileEdit,
+      accent: '#7c3aed',
+      iconBg: '#f5f3ff',
+    },
+    {
+      label: 'Unpaid Challans',
+      href: '/admin/challans?status=generated',
+      count: stats.unpaidChallans || 0,
+      sub: stats.outstandingAmount ? `Rs ${stats.outstandingAmount.toLocaleString()} outstanding` : '',
+      Icon: LuReceipt,
+      accent: '#dc2626',
+      iconBg: '#fef2f2',
+    },
+  ];
+}
 
 function ActionCard({ action }) {
   const { label, href, desc, Icon, accent, iconBg } = action;
@@ -145,27 +148,20 @@ function ActionCard({ action }) {
       href={href}
       className="group flex items-center gap-4 bg-white rounded-2xl border border-gray-100 p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 overflow-hidden relative"
     >
-      {/* Left accent bar */}
       <span
         className="absolute left-0 top-3 bottom-3 w-0.5 rounded-r-full transition-all duration-200 group-hover:top-0 group-hover:bottom-0"
         style={{ background: accent }}
       />
-
-      {/* Icon */}
       <div
         className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0 transition-transform duration-200 group-hover:scale-105"
         style={{ background: iconBg }}
       >
         <Icon size={24} style={{ color: accent }} />
       </div>
-
-      {/* Text */}
       <div className="flex-1 min-w-0">
         <p className="font-bold text-gray-800 text-sm leading-tight">{label}</p>
         <p className="text-xs text-gray-400 mt-0.5 leading-snug">{desc}</p>
       </div>
-
-      {/* Arrow */}
       <LuArrowRight
         size={16}
         className="shrink-0 text-gray-300 group-hover:text-gray-600 group-hover:translate-x-0.5 transition-all duration-200"
@@ -174,11 +170,50 @@ function ActionCard({ action }) {
   );
 }
 
+function AttentionCard({ item }) {
+  const { label, href, count, sub, Icon, accent, iconBg } = item;
+  return (
+    <Link
+      href={href}
+      className="group flex items-center gap-4 bg-white rounded-2xl border border-gray-100 p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200"
+    >
+      <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0" style={{ background: iconBg }}>
+        <Icon size={22} style={{ color: accent }} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="font-bold text-gray-800 text-sm leading-tight">{label}</p>
+        {sub && <p className="text-xs text-gray-400 mt-0.5">{sub}</p>}
+      </div>
+      <span className="text-2xl font-extrabold shrink-0" style={{ color: count > 0 ? accent : '#d1d5db' }}>
+        {count}
+      </span>
+    </Link>
+  );
+}
+
+function ActionBadge({ action }) {
+  const isDestructive = /delete|archive|reject|cancel|suspend/i.test(action || '');
+  const isPositive = /create|approve|restore|paid|finalize|publish/i.test(action || '');
+  const cls = isDestructive
+    ? 'bg-red-50 text-red-700'
+    : isPositive
+      ? 'bg-green-50 text-green-700'
+      : 'bg-blue-50 text-blue-700';
+  return <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${cls}`}>{action}</span>;
+}
+
+function formatDate(d) {
+  if (!d) return '—';
+  return new Date(d).toLocaleString(undefined, {
+    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
-  const [stats,   setStats]   = useState({ students: 0, faculty: 0, programs: 0, applications: 0 });
-  const [recent,  setRecent]  = useState([]);
+  const router = useRouter();
+  const [stats,   setStats]   = useState({});
   const [loading, setLoading] = useState(true);
 
   const today = new Date().toLocaleDateString('en-GB', {
@@ -186,20 +221,26 @@ export default function Dashboard() {
   });
 
   useEffect(() => {
+    if (typeof window !== 'undefined' && !localStorage.getItem('adminToken')) {
+      router.replace('/');
+      return;
+    }
     (async () => {
       try {
-        const [sRes, aRes] = await Promise.all([
-          axios.get(`${API}/stats`),
-          axios.get(`${API}/admissions`),
-        ]);
-        setStats(sRes.data);
-        setRecent((aRes.data || []).slice(0, 5));
-      } catch {
-        setStats({ students: 5000, faculty: 250, programs: 15, applications: 120 });
+        const { data } = await axios.get(`${API}/portal/admin/stats`, authHeaders());
+        setStats(data || {});
+      } catch (err) {
+        if (err.response?.status === 401 || err.response?.status === 403) {
+          localStorage.removeItem('adminToken');
+          router.replace('/');
+        }
       }
       setLoading(false);
     })();
   }, []);
+
+  const staffTotal = (stats.staffCounts?.hod || 0) + (stats.staffCounts?.exam || 0) + (stats.staffCounts?.finance || 0) + (stats.staffCounts?.admin || 0);
+  const attentionLinks = buildAttentionLinks(stats);
 
   return (
     <>
@@ -245,103 +286,130 @@ export default function Dashboard() {
 
         <div className="p-6 md:p-8 space-y-8">
 
-          {/* ── Stat cards ── */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-            {STAT_CARDS.map(({ key, label, Icon, accent, iconBg, bar, border }) => (
-              <div
-                key={key}
-                className={`bg-white rounded-2xl border ${border} shadow-sm overflow-hidden`}
-              >
-                <div className={`h-1 bg-gradient-to-r ${bar}`} />
-                <div className="p-5">
+          {/* ── Portal overview stat cards ── */}
+          <div>
+            <div className="flex items-center gap-2 mb-4">
+              <span className="w-1 h-5 rounded-full inline-block" style={{ background: '#041476' }} />
+              <h2 className="text-base font-bold text-gray-800">Portal Overview</h2>
+            </div>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              {[
+                { label: 'Total Students', value: stats.totalStudents, sub: `${stats.activeStudents || 0} active · ${stats.suspendedStudents || 0} suspended`, Icon: LuUsers, accent: '#2563eb', iconBg: '#eff6ff' },
+                { label: 'Total Teachers', value: stats.totalTeachers, sub: `${stats.pendingTeachers || 0} pending`, Icon: LuUserCheck, accent: '#059669', iconBg: '#ecfdf5' },
+                { label: 'Staff Accounts', value: staffTotal, sub: `${stats.staffCounts?.hod || 0} HOD · ${stats.staffCounts?.exam || 0} Exam · ${stats.staffCounts?.finance || 0} Finance`, Icon: LuShieldCheck, accent: '#7c3aed', iconBg: '#f5f3ff' },
+                { label: 'Pending Admissions', value: stats.pendingAdmissions, sub: 'Awaiting review', Icon: LuClipboardList, accent: '#ea580c', iconBg: '#fff7ed' },
+              ].map(({ label, value, sub, Icon, accent, iconBg }) => (
+                <div key={label} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
                   <div className="flex items-start justify-between mb-4">
-                    <div
-                      className="w-13 h-13 rounded-xl flex items-center justify-center"
-                      style={{ background: iconBg, width: 52, height: 52 }}
-                    >
-                      <Icon size={26} style={{ color: accent }} />
+                    <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: iconBg }}>
+                      <Icon size={22} style={{ color: accent }} />
                     </div>
                     {loading ? (
                       <div className="w-14 h-8 bg-gray-100 rounded-lg animate-pulse mt-1" />
                     ) : (
-                      <span className="text-3xl font-extrabold" style={{ color: accent }}>
-                        {(stats[key] ?? 0).toLocaleString()}
-                      </span>
+                      <span className="text-3xl font-extrabold" style={{ color: accent }}>{(value ?? 0).toLocaleString()}</span>
                     )}
                   </div>
-                  <p className="text-gray-500 text-sm font-medium">{label}</p>
+                  <p className="text-gray-700 text-sm font-semibold">{label}</p>
+                  <p className="text-gray-400 text-xs mt-0.5">{sub}</p>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
 
-          {/* ── Quick actions ── */}
+          {/* ── Needs attention ── */}
+          <div>
+            <div className="flex items-center gap-2 mb-4">
+              <span className="w-1 h-5 rounded-full inline-block bg-amber-500" />
+              <h2 className="text-base font-bold text-gray-800">Needs Attention</h2>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {attentionLinks.map(item => <AttentionCard key={item.href} item={item} />)}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+            {/* ── Recent activity feed ── */}
+            <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+              <div className="flex items-center justify-between mb-5">
+                <div className="flex items-center gap-2">
+                  <span className="w-1 h-5 rounded-full inline-block bg-blue-500" />
+                  <h2 className="text-base font-bold text-gray-800">Recent Activity</h2>
+                </div>
+                <Link href="/admin/activity" className="text-sm font-semibold hover:underline flex items-center gap-1" style={{ color: '#041476' }}>
+                  View All <LuArrowRight size={13} />
+                </Link>
+              </div>
+
+              {loading ? (
+                <div className="space-y-3">
+                  {[1, 2, 3, 4].map(i => <div key={i} className="h-12 bg-gray-100 rounded-xl animate-pulse" />)}
+                </div>
+              ) : (stats.recentActivity || []).length === 0 ? (
+                <div className="text-center py-10 text-gray-400">
+                  <LuHistory size={36} className="mx-auto mb-3 text-gray-300" />
+                  <p className="text-sm font-medium">No recent activity recorded yet.</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-gray-50">
+                  {(stats.recentActivity || []).map(log => (
+                    <div key={log._id} className="py-3 flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <ActionBadge action={log.action} />
+                          <span className="text-xs text-gray-500 truncate">{log.entityLabel || log.entityType}</span>
+                        </div>
+                        <p className="text-xs text-gray-400 mt-1">
+                          by <span className="font-semibold text-gray-600">{log.actorName || 'system'}</span> ({log.actorRole})
+                        </p>
+                      </div>
+                      <span className="text-xs text-gray-400 shrink-0">{formatDate(log.createdAt)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* ── Recent registrations ── */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+              <div className="flex items-center gap-2 mb-5">
+                <span className="w-1 h-5 rounded-full inline-block bg-emerald-500" />
+                <h2 className="text-base font-bold text-gray-800">New This Week</h2>
+              </div>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-blue-50">
+                      <LuUsers size={18} className="text-blue-600" />
+                    </div>
+                    <p className="text-sm font-semibold text-gray-700">Students</p>
+                  </div>
+                  <span className="text-2xl font-extrabold text-blue-600">{stats.recentRegistrations?.students ?? 0}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-emerald-50">
+                      <LuUserCheck size={18} className="text-emerald-600" />
+                    </div>
+                    <p className="text-sm font-semibold text-gray-700">Teachers</p>
+                  </div>
+                  <span className="text-2xl font-extrabold text-emerald-600">{stats.recentRegistrations?.teachers ?? 0}</span>
+                </div>
+                <p className="text-xs text-gray-400 pt-2 border-t border-gray-50">Registrations in the last 7 days.</p>
+              </div>
+            </div>
+          </div>
+
+          {/* ── Quick actions (content & site management) ── */}
           <div>
             <div className="flex items-center gap-2 mb-4">
               <span className="w-1 h-5 rounded-full inline-block" style={{ background: '#041476' }} />
-              <h2 className="text-base font-bold text-gray-800">Quick Actions</h2>
+              <h2 className="text-base font-bold text-gray-800">Content & Site Management</h2>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               {ACTIONS.map(a => <ActionCard key={a.href} action={a} />)}
             </div>
-          </div>
-
-          {/* ── Recent applications ── */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-            <div className="flex items-center justify-between mb-5">
-              <div className="flex items-center gap-2">
-                <span className="w-1 h-5 rounded-full inline-block bg-orange-500" />
-                <h2 className="text-base font-bold text-gray-800">Recent Applications</h2>
-              </div>
-              <Link href="/admin/applications" className="text-sm font-semibold hover:underline flex items-center gap-1" style={{ color: '#041476' }}>
-                View All <LuArrowRight size={13} />
-              </Link>
-            </div>
-
-            {loading ? (
-              <div className="space-y-3">
-                {[1, 2, 3].map(i => (
-                  <div key={i} className="h-12 bg-gray-100 rounded-xl animate-pulse" />
-                ))}
-              </div>
-            ) : recent.length === 0 ? (
-              <div className="text-center py-10 text-gray-400">
-                <LuClipboardList size={36} className="mx-auto mb-3 text-gray-300" />
-                <p className="text-sm font-medium">No applications received yet.</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-100">
-                      <th className="text-left py-2 px-3 text-gray-400 font-semibold text-xs uppercase tracking-wide">Applicant</th>
-                      <th className="text-left py-2 px-3 text-gray-400 font-semibold text-xs uppercase tracking-wide">Program</th>
-                      <th className="text-left py-2 px-3 text-gray-400 font-semibold text-xs uppercase tracking-wide">Applied</th>
-                      <th className="text-left py-2 px-3 text-gray-400 font-semibold text-xs uppercase tracking-wide">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recent.map(app => (
-                      <tr key={app._id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
-                        <td className="py-3 px-3">
-                          <p className="font-semibold text-gray-800">{app.fullName}</p>
-                          <p className="text-xs text-gray-400">{app.email}</p>
-                        </td>
-                        <td className="py-3 px-3 text-gray-600">{app.program || '—'}</td>
-                        <td className="py-3 px-3 text-gray-400 text-xs">
-                          {app.createdAt ? new Date(app.createdAt).toLocaleDateString('en-GB') : '—'}
-                        </td>
-                        <td className="py-3 px-3">
-                          <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${STATUS_STYLE[app.status] || 'bg-gray-100 text-gray-600 border border-gray-200'}`}>
-                            {app.status || 'pending'}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
           </div>
 
           <p className="text-center text-xs text-gray-300 pb-2">
@@ -352,4 +420,3 @@ export default function Dashboard() {
     </>
   );
 }
-

@@ -8,7 +8,7 @@ router.get('/', async (req, res) => {
     const facilities = await Facility.find().sort({ serialNo: 1, createdAt: 1 });
     res.json(facilities);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 
@@ -19,7 +19,7 @@ router.get('/:id', async (req, res) => {
     if (!facility) return res.status(404).json({ message: 'Not found' });
     res.json(facility);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 
@@ -60,7 +60,7 @@ router.delete('/:id', async (req, res) => {
     await Facility.findByIdAndDelete(req.params.id);
     res.json({ message: 'Deleted' });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 

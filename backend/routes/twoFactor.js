@@ -8,6 +8,7 @@ const crypto     = require('crypto');
 const rateLimit  = require('express-rate-limit');
 const Admin      = require('../models/Admin');
 const { verifyAdminToken } = require('../middleware/auth');
+const { isLocked, lockRemainingMinutes, recordFailedAttempt, resetFailedAttempts } = require('../middleware/accountLockout');
 
 // ── Rate limiters ─────────────────────────────────────────────────────────────
 
@@ -39,9 +40,9 @@ function issueTempToken(admin) {
 
 function issueFullToken(admin) {
   return jwt.sign(
-    { id: admin._id, role: 'admin', email: admin.email },
+    { id: admin._id, role: 'admin', email: admin.email, tokenVersion: admin.tokenVersion || 0 },
     process.env.JWT_SECRET,
-    { expiresIn: '7d' }
+    { expiresIn: '12h' }
   );
 }
 
@@ -69,12 +70,23 @@ async function generateRecoveryCodes() {
 // POST /api/2fa/login
 router.post('/login', loginLimiter, async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { password } = req.body;
+    const email = String(req.body.email || '').trim().toLowerCase();
     const admin = await Admin.findOne({ email });
     if (!admin) return res.status(401).json({ message: 'Invalid credentials.' });
 
+    if (admin.isActive === false) return res.status(403).json({ message: 'This account has been archived. Contact another admin.' });
+
+    if (isLocked(admin)) {
+      return res.status(423).json({ message: `Account locked due to too many failed attempts. Try again in ${lockRemainingMinutes(admin)} minute(s).` });
+    }
+
     const valid = await bcrypt.compare(password, admin.password);
-    if (!valid) return res.status(401).json({ message: 'Invalid credentials.' });
+    if (!valid) {
+      await recordFailedAttempt(admin);
+      return res.status(401).json({ message: 'Invalid credentials.' });
+    }
+    await resetFailedAttempts(admin);
 
     if (!admin.twoFactorEnabled) {
       // No 2FA — issue JWT immediately (existing behaviour)
@@ -90,7 +102,7 @@ router.post('/login', loginLimiter, async (req, res) => {
     const tempToken = issueTempToken(admin);
     return res.json({ requires2FA: true, tempToken });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 
@@ -151,7 +163,7 @@ router.post('/verify-login', verifyLimiter, async (req, res) => {
     if (err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError') {
       return res.status(401).json({ message: 'Session expired. Please log in again.' });
     }
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 
@@ -176,7 +188,7 @@ router.post('/setup', verifyAdminToken, async (req, res) => {
     const qrCodeDataUrl = await QRCode.toDataURL(secret.otpauth_url);
     res.json({ qrCode: qrCodeDataUrl, secret: secret.base32 });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 
@@ -206,7 +218,7 @@ router.post('/enable', verifyAdminToken, async (req, res) => {
 
     res.json({ message: '2FA enabled successfully.', recoveryCodes: plain });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 
@@ -231,7 +243,7 @@ router.post('/disable', verifyAdminToken, async (req, res) => {
 
     res.json({ message: '2FA has been disabled.' });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 
@@ -249,7 +261,7 @@ router.get('/status', verifyAdminToken, async (req, res) => {
       remainingRecoveryCodes: totalCodes - usedCodes,
     });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 
@@ -271,7 +283,7 @@ router.post('/regenerate-recovery-codes', verifyAdminToken, async (req, res) => 
 
     res.json({ message: 'Recovery codes regenerated.', recoveryCodes: plain });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 

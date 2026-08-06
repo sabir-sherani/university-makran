@@ -2,9 +2,9 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const Faculty = require('../models/Faculty');
-const { createStorage } = require('../utils/cloudinary');
+const { createUpload } = require('../utils/cloudinary');
 
-const upload = multer({ storage: createStorage('faculty', ['jpg', 'jpeg', 'png', 'webp']) });
+const upload = createUpload('faculty', ['jpg', 'jpeg', 'png', 'webp']);
 
 // GET /api/faculty?department=id
 router.get('/', async (req, res) => {
@@ -13,7 +13,7 @@ router.get('/', async (req, res) => {
     const faculty = await Faculty.find(filter).populate('department', 'name slug');
     res.json(faculty);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 
@@ -48,7 +48,7 @@ router.delete('/:id', async (req, res) => {
     await Faculty.findByIdAndDelete(req.params.id);
     res.json({ message: 'Faculty member deleted' });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.sendServerError(err);
   }
 });
 

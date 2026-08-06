@@ -12,7 +12,7 @@ const fileUrl = (u) => u?.startsWith('http') ? u : `${BASE_URL}${u}`;
 
 
 
-const inputCls = 'w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-primary text-sm';
+const inputCls = 'w-full px-4 py-2 min-h-11 border border-gray-300 rounded-lg focus:outline-none focus:border-primary text-sm';
 const labelCls = 'block text-gray-700 font-semibold mb-1 text-sm';
 
 function Alert({ type, message }) {
@@ -34,7 +34,7 @@ export default function StudentPortal() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [student, setStudent] = useState(null);
   const [token, setToken] = useState(null);
-  const [activeSection, setActiveSection] = useState('profile');
+  const [activeSection, setActiveSection] = useState('dashboard');
 
   const [loginData, setLoginData] = useState({ registrationNo: '', password: '' });
   const [loginError, setLoginError] = useState('');
@@ -52,7 +52,7 @@ export default function StudentPortal() {
   const [regData, setRegData] = useState({
     registrationNo: '', fullName: '', email: '', phone: '', cnic: '',
     fatherName: '', gender: '', dateOfBirth: '', address: '', timeSession: '',
-    department: '', program: '', session: '', currentSemester: '1',
+    departmentId: '', programId: '', sessionId: '',
     rollNo: '',
     password: '', confirmPassword: '',
   });
@@ -65,14 +65,24 @@ export default function StudentPortal() {
   const [dataLoading, setDataLoading] = useState(false);
   const [deptNotices, setDeptNotices]   = useState([]);
   const [noticesLoading, setNoticesLoading] = useState(false);
+  const [correctionRequests, setCorrectionRequests] = useState([]);
+  const [crLoading, setCrLoading] = useState(false);
 
-  // Result Cards (structured result sheets)
+  const [dashboard, setDashboard] = useState(null);
+  const [dashLoading, setDashLoading] = useState(false);
+
+  // Result Cards (structured result sheets) — grade/GPA/CGPA are all
+  // computed server-side (see backend/utils/grading.js); this page only renders them.
   const [resultCards, setResultCards]         = useState([]);
+  const [rcCgpa, setRcCgpa]                   = useState(null);
+  const [rcCurrentGPA, setRcCurrentGPA]       = useState(null);
   const [rcLoading, setRcLoading]             = useState(false);
   const [rcView, setRcView]                   = useState('list');   // 'list' | 'card' | 'transcript'
   const [rcSelected, setRcSelected]           = useState(null);
   const [rcSemFilter, setRcSemFilter]         = useState('');
   const [transcriptSem, setTranscriptSem]     = useState('');
+  const [transcript, setTranscript]           = useState(null); // { bySemester, cgpa, totalCreditHours }
+  const [transcriptLoading, setTranscriptLoading] = useState(false);
 
   // Fee Challans
   const [challans, setChallans]       = useState([]);
@@ -95,6 +105,8 @@ export default function StudentPortal() {
 
   // Edit profile
   const [deptList, setDeptList] = useState([]);
+  const [programList, setProgramList] = useState([]);
+  const [sessionList, setSessionList] = useState([]);
 
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [editData, setEditData] = useState({});
@@ -125,7 +137,16 @@ export default function StudentPortal() {
         });
     }
     axios.get(`${API}/departments`).then(r => setDeptList(r.data)).catch(() => {});
+    axios.get(`${API}/lookups/sessions`).then(r => setSessionList(r.data)).catch(() => {});
   }, []);
+
+  // Programs cascade from the selected department
+  useEffect(() => {
+    if (!regData.departmentId) { setProgramList([]); return; }
+    axios.get(`${API}/lookups/programs`, { params: { department: regData.departmentId } })
+      .then(r => setProgramList(r.data))
+      .catch(() => setProgramList([]));
+  }, [regData.departmentId]);
 
   useEffect(() => {
     if (router.query.tab === 'register') setTab('register');
@@ -136,10 +157,12 @@ export default function StudentPortal() {
       if (activeSection === 'datesheets') fetchDatesheets();
       if (activeSection === 'results') fetchResults();
       if (activeSection === 'assignments') fetchAssignments();
-      if (activeSection === 'resultCards') { fetchResultCards(); setRcView('list'); }
+      if (activeSection === 'resultCards') { fetchResultCards(); fetchTranscript(); setRcView('list'); }
       if (activeSection === 'challans') { fetchChallans(); setChnView('list'); }
       if (activeSection === 'ongoingClasses') fetchOngoingClasses();
       if (activeSection === 'deptNotices') fetchDeptNotices();
+      if (activeSection === 'profile') fetchCorrectionRequests();
+      if (activeSection === 'dashboard') fetchDashboard();
     }
   }, [activeSection, isLoggedIn]);
 
@@ -152,6 +175,24 @@ export default function StudentPortal() {
       setDeptNotices(data || []);
     } catch { setDeptNotices([]); }
     setNoticesLoading(false);
+  };
+
+  const fetchCorrectionRequests = async () => {
+    setCrLoading(true);
+    try {
+      const { data } = await axios.get(`${API}/portal/student/correction-requests`, authHeaders());
+      setCorrectionRequests(data || []);
+    } catch { setCorrectionRequests([]); }
+    setCrLoading(false);
+  };
+
+  const fetchDashboard = async () => {
+    setDashLoading(true);
+    try {
+      const { data } = await axios.get(`${API}/portal/student/dashboard`, authHeaders());
+      setDashboard(data);
+    } catch { setDashboard(null); }
+    setDashLoading(false);
   };
 
   const fetchDatesheets = async () => {
@@ -185,9 +226,20 @@ export default function StudentPortal() {
     setRcLoading(true);
     try {
       const res = await axios.get(`${API}/portal/student/result-sheets`, authHeaders());
-      setResultCards(res.data || []);
-    } catch { setResultCards([]); }
+      setResultCards(res.data?.results || []);
+      setRcCgpa(res.data?.cgpa ?? null);
+      setRcCurrentGPA(res.data?.currentSemesterGPA ?? null);
+    } catch { setResultCards([]); setRcCgpa(null); setRcCurrentGPA(null); }
     setRcLoading(false);
+  };
+
+  const fetchTranscript = async () => {
+    setTranscriptLoading(true);
+    try {
+      const res = await axios.get(`${API}/portal/student/transcript`, authHeaders());
+      setTranscript(res.data || null);
+    } catch { setTranscript(null); }
+    setTranscriptLoading(false);
   };
 
   const fetchChallans = async () => {
@@ -279,7 +331,7 @@ export default function StudentPortal() {
       setRegData({
         registrationNo: '', fullName: '', email: '', phone: '', cnic: '',
         fatherName: '', gender: '', dateOfBirth: '', address: '', timeSession: '',
-        department: '', program: '', session: '', currentSemester: '1',
+        departmentId: '', programId: '', sessionId: '', currentSemester: '1',
         rollNo: '',
         password: '', confirmPassword: '',
       });
@@ -295,7 +347,7 @@ export default function StudentPortal() {
     setIsLoggedIn(false);
     setStudent(null);
     setToken(null);
-    setActiveSection('profile');
+    setActiveSection('dashboard');
     setDatesheets([]);
     setResults([]);
   };
@@ -344,6 +396,7 @@ export default function StudentPortal() {
       setStudent(updatedStudent);
       localStorage.setItem('studentData', JSON.stringify(updatedStudent));
       setEditSuccess('Profile updated successfully!');
+      if (res.data.correctionRequested) fetchCorrectionRequests();
       setTimeout(() => { setIsEditingProfile(false); setEditSuccess(''); }, 1500);
     } catch (err) {
       setEditError(err.response?.data?.message || 'Update failed. Please try again.');
@@ -397,6 +450,7 @@ export default function StudentPortal() {
             </div>
             <nav className="flex flex-col">
               {[
+                { id: 'dashboard', label: '🏠 Dashboard' },
                 { id: 'profile', label: '👤 Profile' },
                 { id: 'deptNotices', label: '📢 Dept Notices' },
                 { id: 'ongoingClasses', label: '📚 My Subjects' },
@@ -440,6 +494,100 @@ export default function StudentPortal() {
               Menu
             </button>
             <h1 className="text-2xl font-bold text-primary mb-6">Dashboard</h1>
+
+            {/* Dashboard overview */}
+            {activeSection === 'dashboard' && (
+              <div className="space-y-6">
+                {dashLoading ? (
+                  <div className="bg-white rounded-xl shadow p-10 text-center text-gray-400 text-sm">Loading dashboard…</div>
+                ) : !dashboard ? (
+                  <div className="bg-white rounded-xl shadow p-10 text-center text-gray-400 text-sm">Failed to load dashboard. Please try refreshing.</div>
+                ) : (
+                  <>
+                    <div>
+                      <h2 className="text-xl font-bold text-gray-800">Welcome back, {dashboard.profile.fullName?.split(' ')[0]} 👋</h2>
+                      <p className="text-sm text-gray-500 mt-0.5">{dashboard.profile.registrationNo} · {dashboard.profile.program} · Semester {dashboard.profile.currentSemester}</p>
+                    </div>
+
+                    {/* Stat cards */}
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                      {[
+                        { label: 'Attendance', value: dashboard.attendancePercentage != null ? `${dashboard.attendancePercentage}%` : 'N/A', icon: '📋', color: dashboard.attendancePercentage != null && dashboard.attendancePercentage < 75 ? 'bg-red-50 border-red-200 text-red-700' : 'bg-orange-50 border-orange-200 text-orange-700' },
+                        { label: 'Semester GPA', value: dashboard.currentSemesterGPA != null ? dashboard.currentSemesterGPA.toFixed(2) : 'N/A', icon: '📈', color: 'bg-blue-50 border-blue-200 text-blue-700' },
+                        { label: 'CGPA', value: dashboard.cgpa != null ? dashboard.cgpa.toFixed(2) + ' / 4.00' : 'N/A', icon: '🏆', color: 'bg-green-50 border-green-200 text-green-700' },
+                        { label: 'Outstanding Fees', value: `Rs ${dashboard.outstandingFeeBalance.toLocaleString()}`, icon: '💳', color: dashboard.outstandingFeeBalance > 0 ? 'bg-red-50 border-red-200 text-red-700' : 'bg-green-50 border-green-200 text-green-700' },
+                      ].map(({ label, value, icon, color }) => (
+                        <div key={label} className={`border rounded-xl p-4 ${color}`}>
+                          <p className="text-2xl mb-1">{icon}</p>
+                          <p className="text-xs font-medium opacity-70 mb-0.5">{label}</p>
+                          <p className="font-bold text-lg leading-tight">{value}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Quick links row */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <button onClick={() => setActiveSection('assignments')}
+                        className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 text-left hover:shadow-md transition">
+                        <p className="text-xs text-gray-400 font-medium">Pending Assignments</p>
+                        <p className="text-2xl font-bold text-primary mt-0.5">{dashboard.pendingAssignments}</p>
+                      </button>
+                      <button onClick={() => setActiveSection('deptNotices')}
+                        className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 text-left hover:shadow-md transition">
+                        <p className="text-xs text-gray-400 font-medium">Active Notices</p>
+                        <p className="text-2xl font-bold text-primary mt-0.5">{dashboard.activeNoticesCount}</p>
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                      {/* Enrolled subjects */}
+                      <div className="bg-white rounded-xl shadow p-5">
+                        <h3 className="font-bold text-gray-700 text-sm mb-3">📚 Enrolled Subjects — Semester {dashboard.profile.currentSemester}</h3>
+                        {dashboard.enrolledSubjects.length === 0 ? (
+                          <p className="text-sm text-gray-400">No course list found for your program/semester yet.</p>
+                        ) : (
+                          <div className="divide-y divide-gray-50">
+                            {dashboard.enrolledSubjects.map((c, i) => (
+                              <div key={i} className="py-2 flex items-center justify-between gap-2">
+                                <div className="min-w-0">
+                                  <p className="text-sm font-semibold text-gray-800 truncate">{c.courseTitle}</p>
+                                  {c.code && <p className="text-xs text-gray-400">{c.code}{c.theoryLab ? ` · ${c.theoryLab}` : ''}</p>}
+                                </div>
+                                <span className="text-xs font-bold text-blue-700 bg-blue-50 px-2 py-1 rounded-full shrink-0">{c.creditHours} CH</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Upcoming exams */}
+                      <div className="bg-white rounded-xl shadow p-5">
+                        <h3 className="font-bold text-gray-700 text-sm mb-3">📅 Upcoming Exams</h3>
+                        {dashboard.upcomingExams.length === 0 ? (
+                          <p className="text-sm text-gray-400">No upcoming exams scheduled.</p>
+                        ) : (
+                          <div className="divide-y divide-gray-50">
+                            {dashboard.upcomingExams.map((ex, i) => (
+                              <div key={i} className="py-2">
+                                <div className="flex items-center justify-between gap-2">
+                                  <p className="text-sm font-semibold text-gray-800">{ex.subject}</p>
+                                  <span className="text-xs font-bold text-orange-700 bg-orange-50 px-2 py-0.5 rounded-full shrink-0">{ex.examType}</span>
+                                </div>
+                                <p className="text-xs text-gray-400 mt-0.5">
+                                  {ex.date ? new Date(ex.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+                                  {ex.startTime ? ` · ${ex.startTime}${ex.endTime ? `–${ex.endTime}` : ''}` : ''}
+                                  {ex.room ? ` · Room ${ex.room}` : ''}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
 
             {/* Profile */}
             {activeSection === 'profile' && (
@@ -610,6 +758,46 @@ export default function StudentPortal() {
                         </div>
                       ))}
                     </div>
+
+                    {/* Correction requests — status of any requested changes to official fields */}
+                    {(crLoading || correctionRequests.length > 0) && (
+                      <div>
+                        <h3 className="font-bold text-gray-700 text-sm mb-2">📝 Profile Correction Requests</h3>
+                        {crLoading ? (
+                          <div className="bg-gray-50 rounded-lg p-4 text-center text-gray-400 text-sm">Loading…</div>
+                        ) : (
+                          <div className="space-y-2">
+                            {correctionRequests.map((cr) => {
+                              const badge = cr.status === 'approved'
+                                ? 'bg-green-100 text-green-700'
+                                : cr.status === 'rejected'
+                                ? 'bg-red-100 text-red-700'
+                                : 'bg-yellow-100 text-yellow-700';
+                              return (
+                                <div key={cr._id} className="bg-gray-50 rounded-lg p-3 border border-gray-100">
+                                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold capitalize ${badge}`}>{cr.status}</span>
+                                    <span className="text-xs text-gray-400">
+                                      {new Date(cr.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                    </span>
+                                  </div>
+                                  <div className="mt-2 space-y-0.5">
+                                    {(cr.requestedFieldChanges || []).map((c, i) => (
+                                      <p key={i} className="text-xs text-gray-600">
+                                        <span className="font-semibold">{c.field}</span>: {c.oldValue || '—'} → <span className="text-primary font-semibold">{c.newValue}</span>
+                                      </p>
+                                    ))}
+                                  </div>
+                                  {cr.status === 'rejected' && cr.reviewerComment && (
+                                    <p className="text-xs text-red-600 mt-2"><span className="font-semibold">Reason:</span> {cr.reviewerComment}</p>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -646,20 +834,37 @@ export default function StudentPortal() {
                         ? 'bg-orange-100 text-orange-700'
                         : 'bg-blue-100 text-blue-700';
                       const badgeLabel = isUrgent ? '🔴 Urgent' : isImportant ? '🟠 Important' : '🔵 Normal';
+                      const isExpiringSoon = n.expiresAt && new Date(n.expiresAt) - new Date() < 3 * 24 * 60 * 60 * 1000;
                       return (
                         <div key={n._id} className={`rounded-xl shadow-sm p-5 ${cardCls}`}>
                           <div className="flex flex-wrap items-center gap-2 mb-2">
                             <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${badge}`}>{badgeLabel}</span>
                             <span className="text-xs text-gray-400">
-                              {new Date(n.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                              {new Date(n.publishAt || n.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                             </span>
                             {n.postedByName && (
                               <span className="text-xs text-gray-400">· Posted by {n.postedByName}</span>
+                            )}
+                            {n.expiresAt && (
+                              <span className={`text-xs ${isExpiringSoon ? 'text-red-500 font-semibold' : 'text-gray-400'}`}>
+                                · Expires {new Date(n.expiresAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                              </span>
                             )}
                           </div>
                           <h3 className="font-bold text-gray-900 text-base leading-snug">{n.title}</h3>
                           {n.body && (
                             <p className="text-sm text-gray-700 mt-2 whitespace-pre-line leading-relaxed">{n.body}</p>
+                          )}
+                          {n.attachments?.length > 0 && (
+                            <div className="flex flex-wrap gap-2 mt-3">
+                              {n.attachments.map((att, i) => (
+                                <a key={i} href={att.fileUrl.startsWith('http') ? att.fileUrl : `${API.replace(/\/api$/, '')}${att.fileUrl}`}
+                                  target="_blank" rel="noreferrer"
+                                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary bg-blue-50 border border-blue-100 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition">
+                                  📎 {att.fileName || 'Download attachment'}
+                                </a>
+                              ))}
+                            </div>
                           )}
                         </div>
                       );
@@ -982,6 +1187,81 @@ export default function StudentPortal() {
               const fmt = n => Number(n || 0).toLocaleString('en-PK', { minimumFractionDigits: 0 });
               const FEE_BADGE = { generated: 'bg-blue-100 text-blue-800', paid: 'bg-green-100 text-green-800', expired: 'bg-orange-100 text-orange-700', cancelled: 'bg-gray-100 text-gray-600' };
 
+              if (chnView === 'receipt' && chnSelected) {
+                const ch = chnSelected;
+                return (
+                  <div>
+                    <style>{`
+                      @media print {
+                        @page { size: A4; margin: 12mm; }
+                        body * { visibility: hidden !important; }
+                        #student-receipt-print, #student-receipt-print * { visibility: visible !important; }
+                        #student-receipt-print { position: absolute !important; top: 0 !important; left: 0 !important; width: 100% !important; }
+                        .no-print-ch { display: none !important; }
+                      }
+                    `}</style>
+                    <div className="no-print-ch flex items-center gap-3 mb-6">
+                      <button onClick={() => setChnView('list')} className="flex items-center gap-2 text-gray-500 hover:text-primary text-sm font-medium">← Back to Challans</button>
+                      <button onClick={() => window.print()} className="ml-auto px-6 py-2.5 bg-primary text-white font-bold rounded-xl text-sm hover:opacity-90">🖨 Print Receipt</button>
+                    </div>
+                    <div id="student-receipt-print" className="max-w-xl mx-auto bg-white rounded-xl shadow overflow-hidden border-2 border-green-200">
+                      <div style={{ background: 'linear-gradient(135deg, #15803d 0%, #16a34a 100%)', padding: '24px 32px' }} className="flex items-center gap-4">
+                        <img src="/logo.png.webp" alt="UoMP" className="w-14 h-14 object-contain bg-white rounded-full p-1" />
+                        <div>
+                          <p className="text-green-100 text-xs font-semibold uppercase tracking-widest">University of Makran, Panjgur</p>
+                          <h1 className="text-white text-xl font-extrabold">PAYMENT RECEIPT</h1>
+                          <p className="text-green-100 text-xs mt-0.5">Finance Section</p>
+                        </div>
+                      </div>
+                      <div className="p-6 space-y-4">
+                        <div className="flex items-center justify-between">
+                          <span className="px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-800">✓ PAID</span>
+                          <span className="font-mono text-sm font-bold text-gray-700">{ch.challanNo}</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3 text-sm bg-gray-50 rounded-xl p-4">
+                          {[
+                            ['Student', ch.studentName],
+                            ['Registration No', ch.registrationNo],
+                            ['Program', ch.program],
+                            ['Semester', ch.semester],
+                            ['Payment Date', ch.paidAt ? new Date(ch.paidAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : 'N/A'],
+                            ['Payment Reference', ch.paymentRef || 'N/A'],
+                          ].map(([label, val]) => (
+                            <div key={label}>
+                              <p className="text-gray-400 text-xs">{label}</p>
+                              <p className="font-semibold text-gray-800">{val}</p>
+                            </div>
+                          ))}
+                        </div>
+                        <table className="w-full text-sm border-collapse">
+                          <thead>
+                            <tr className="bg-gray-100">
+                              <th className="text-left p-2 text-xs font-bold text-gray-500 uppercase">Description</th>
+                              <th className="text-right p-2 text-xs font-bold text-gray-500 uppercase">Amount (Rs.)</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {ch.feeItems.map((it, i) => (
+                              <tr key={i} className="border-b border-gray-50">
+                                <td className="p-2">{it.description}</td>
+                                <td className="p-2 text-right font-mono">{fmt(it.amount)}</td>
+                              </tr>
+                            ))}
+                            <tr className="bg-green-600 text-white font-bold">
+                              <td className="p-2.5">AMOUNT PAID</td>
+                              <td className="p-2.5 text-right font-mono">Rs. {fmt(ch.totalAmount)}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                        <p className="text-xs text-gray-400 text-center pt-2 border-t border-gray-100">
+                          This is a computer-generated receipt and is valid without a signature. Retain for your records.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+
               if (chnView === 'print' && chnSelected) {
                 const ch = chnSelected;
                 const fmt2 = n => Number(n || 0).toLocaleString('en-PK', { minimumFractionDigits: 0 });
@@ -1112,10 +1392,35 @@ export default function StudentPortal() {
                 );
               }
 
+              const unpaidChallans = challans.filter(c => c.status === 'generated');
+              const outstandingBalance = unpaidChallans.reduce((sum, c) => sum + (c.totalAmount || 0), 0);
+              const paidTotal = challans.filter(c => c.status === 'paid').reduce((sum, c) => sum + (c.totalAmount || 0), 0);
+
               return (
                 <div className="space-y-5">
                   <h2 className="text-2xl font-bold text-primary">Fee &amp; Challans</h2>
                   <p className="text-gray-500 text-sm">View and download your fee challans issued by the Finance Section.</p>
+
+                  {!chnLoading && challans.length > 0 && (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className={`rounded-2xl border p-4 ${outstandingBalance > 0 ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}`}>
+                        <p className={`text-xs font-bold uppercase tracking-wider ${outstandingBalance > 0 ? 'text-red-600' : 'text-green-600'}`}>Outstanding Balance</p>
+                        <p className={`text-2xl font-black mt-1 ${outstandingBalance > 0 ? 'text-red-700' : 'text-green-700'}`}>Rs. {fmt(outstandingBalance)}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">{unpaidChallans.length} unpaid challan{unpaidChallans.length !== 1 ? 's' : ''}</p>
+                      </div>
+                      <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
+                        <p className="text-xs font-bold uppercase tracking-wider text-blue-600">Total Paid</p>
+                        <p className="text-2xl font-black mt-1 text-blue-700">Rs. {fmt(paidTotal)}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">{challans.filter(c => c.status === 'paid').length} challan{challans.filter(c => c.status === 'paid').length !== 1 ? 's' : ''} paid</p>
+                      </div>
+                      <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                        <p className="text-xs font-bold uppercase tracking-wider text-gray-500">Total Challans</p>
+                        <p className="text-2xl font-black mt-1 text-gray-700">{challans.length}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">Issued to date</p>
+                      </div>
+                    </div>
+                  )}
+
                   {chnLoading ? (
                     <div className="flex items-center justify-center py-12"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>
                   ) : challans.length === 0 ? (
@@ -1147,7 +1452,12 @@ export default function StudentPortal() {
                                 {ch.feeItems.map((it, i) => <span key={i} className="bg-gray-100 text-gray-600 text-xs px-2 py-0.5 rounded-full">{it.description}: Rs.{fmt(it.amount)}</span>)}
                               </div>
                             </div>
-                            <button onClick={() => { setChnSelected(ch); setChnView('print'); }} className="shrink-0 px-4 py-2 bg-primary text-white text-xs font-bold rounded-xl hover:opacity-90">View &amp; Print</button>
+                            <div className="shrink-0 flex flex-col gap-1.5">
+                              <button onClick={() => { setChnSelected(ch); setChnView('print'); }} className="px-4 py-2 bg-primary text-white text-xs font-bold rounded-xl hover:opacity-90">View &amp; Print</button>
+                              {ch.status === 'paid' && (
+                                <button onClick={() => { setChnSelected(ch); setChnView('receipt'); }} className="px-4 py-2 bg-green-600 text-white text-xs font-bold rounded-xl hover:opacity-90">🧾 Receipt</button>
+                              )}
+                            </div>
                           </div>
                           {ch.lateFeePerDay > 0 && ch.dueDate && new Date(ch.dueDate) < new Date() && ch.status !== 'paid' && (
                             <div className="px-5 py-2 bg-orange-50 border-t border-orange-100 text-xs text-orange-700 font-medium">
@@ -1330,6 +1640,19 @@ export default function StudentPortal() {
                         </div>
                       </div>
 
+                      {(rcCgpa != null || rcCurrentGPA != null) && (
+                        <div className="grid grid-cols-2 gap-3 max-w-md">
+                          <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 text-center">
+                            <p className="text-xs text-blue-600 font-medium">Current Semester GPA</p>
+                            <p className="text-xl font-bold text-blue-700 mt-0.5">{rcCurrentGPA != null ? rcCurrentGPA.toFixed(2) : 'N/A'}</p>
+                          </div>
+                          <div className="bg-green-50 border border-green-100 rounded-xl p-3 text-center">
+                            <p className="text-xs text-green-600 font-medium">CGPA</p>
+                            <p className="text-xl font-bold text-green-700 mt-0.5">{rcCgpa != null ? `${rcCgpa.toFixed(2)} / 4.00` : 'N/A'}</p>
+                          </div>
+                        </div>
+                      )}
+
                       {rcLoading ? (
                         <div className="flex items-center gap-3 text-gray-400 py-8">
                           <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
@@ -1362,21 +1685,27 @@ export default function StudentPortal() {
                                 </div>
 
                                 {/* Marks row */}
-                                <div className="flex gap-4 text-center mb-4">
+                                <div className="flex gap-3 text-center mb-4">
                                   <div className="flex-1 bg-gray-50 rounded-xl p-2.5">
-                                    <p className="text-xs text-gray-400 mb-0.5">Total Marks</p>
-                                    <p className="text-xl font-bold text-gray-700">{rc.totalMarks}</p>
+                                    <p className="text-xs text-gray-400 mb-0.5">Total</p>
+                                    <p className="text-lg font-bold text-gray-700">{rc.totalMarks}</p>
                                   </div>
                                   <div className="flex-1 bg-blue-50 rounded-xl p-2.5">
                                     <p className="text-xs text-gray-400 mb-0.5">Obtained</p>
-                                    <p className="text-xl font-bold text-primary">
+                                    <p className="text-lg font-bold text-primary">
                                       {rc.entry?.resultStatus === 'Absent' || rc.entry?.resultStatus === 'Withheld' ? '—' : rc.entry?.obtainedMarks ?? '—'}
                                     </p>
                                   </div>
                                   <div className="flex-1 rounded-xl p-2.5" style={{ background: '#f0f9ff' }}>
                                     <p className="text-xs text-gray-400 mb-0.5">Grade</p>
-                                    <p className="text-xl font-bold" style={{ color: GRADE_COLOR(rc.entry?.grade) }}>
-                                      {rc.entry?.grade || '—'}
+                                    <p className="text-lg font-bold" style={{ color: GRADE_COLOR(rc.grade) }}>
+                                      {rc.grade || '—'}
+                                    </p>
+                                  </div>
+                                  <div className="flex-1 rounded-xl p-2.5" style={{ background: '#f0fdf4' }}>
+                                    <p className="text-xs text-gray-400 mb-0.5">GPA</p>
+                                    <p className="text-lg font-bold text-green-700">
+                                      {rc.gradePoints != null ? rc.gradePoints.toFixed(2) : '—'}
                                     </p>
                                   </div>
                                 </div>
@@ -1470,10 +1799,11 @@ export default function StudentPortal() {
 
                             {/* Subject result table */}
                             <p style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '10px' }}>Examination Result</p>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', marginBottom: '24px' }}>
+                            <div className="print-table-scroll" style={{ overflowX: 'auto', marginBottom: '24px' }}>
+                            <table style={{ width: '100%', minWidth: '640px', borderCollapse: 'collapse', fontSize: '13px' }}>
                               <thead>
                                 <tr style={{ background: '#041476', color: 'white' }}>
-                                  {['Subject / Course', 'Exam Type', 'Total Marks', 'Obtained Marks', 'Grade', 'Passing Marks', 'Result Status', 'Remarks'].map(h => (
+                                  {['Subject / Course', 'Exam Type', 'Total Marks', 'Obtained Marks', 'Grade', 'GPA', 'Passing Marks', 'Result Status', 'Remarks'].map(h => (
                                     <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontSize: '11px', fontWeight: '700', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>{h}</th>
                                   ))}
                                 </tr>
@@ -1486,8 +1816,11 @@ export default function StudentPortal() {
                                   <td style={{ padding: '12px', textAlign: 'center', fontWeight: '700', color: '#041476', fontSize: '15px' }}>
                                     {absent ? '—' : e.obtainedMarks ?? '—'}
                                   </td>
-                                  <td style={{ padding: '12px', textAlign: 'center', fontWeight: '800', fontSize: '16px', color: GRADE_COLOR(e.grade) }}>
-                                    {absent ? '—' : (e.grade || '—')}
+                                  <td style={{ padding: '12px', textAlign: 'center', fontWeight: '800', fontSize: '16px', color: GRADE_COLOR(rc.grade) }}>
+                                    {absent ? '—' : (rc.grade || '—')}
+                                  </td>
+                                  <td style={{ padding: '12px', textAlign: 'center', fontWeight: '700', color: '#15803d' }}>
+                                    {absent ? '—' : (rc.gradePoints != null ? rc.gradePoints.toFixed(2) : '—')}
                                   </td>
                                   <td style={{ padding: '12px', textAlign: 'center', color: '#475569' }}>{rc.passingMarks}</td>
                                   <td style={{ padding: '12px' }}>
@@ -1501,6 +1834,7 @@ export default function StudentPortal() {
                                 </tr>
                               </tbody>
                             </table>
+                            </div>
 
                             {/* Overall result banner */}
                             <div style={{
@@ -1518,7 +1852,11 @@ export default function StudentPortal() {
                               <div style={{ textAlign: 'right' }}>
                                 <p style={{ fontSize: '11px', color: '#94a3b8' }}>Percentage</p>
                                 <p style={{ fontSize: '20px', fontWeight: '700', color: '#1e293b' }}>
-                                  {absent ? '—' : `${Math.round((e.obtainedMarks / rc.totalMarks) * 100)}%`}
+                                  {absent ? '—' : `${rc.percentage}%`}
+                                </p>
+                                <p style={{ fontSize: '11px', color: '#94a3b8', marginTop: '6px' }}>Overall CGPA</p>
+                                <p style={{ fontSize: '16px', fontWeight: '700', color: '#1e293b' }}>
+                                  {rcCgpa != null ? rcCgpa.toFixed(2) : '—'} / 4.00
                                 </p>
                               </div>
                             </div>
@@ -1551,16 +1889,27 @@ export default function StudentPortal() {
                     );
                   })()}
 
-                  {/* ── SEMESTER TRANSCRIPT VIEW ── */}
+                  {/* ── SEMESTER TRANSCRIPT VIEW ──
+                       Every number here (GPA, CGPA, pass/fail counts) comes
+                       straight from GET /transcript — computed server-side,
+                       this view only renders it. */}
                   {rcView === 'transcript' && (() => {
-                    const semList = [...new Set(resultCards.map(r => r.semester).filter(Boolean))].sort();
-                    const tData   = resultCards.filter(r => r.semester === tSem);
-                    const passCount = tData.filter(r => r.entry?.resultStatus === 'Pass').length;
-                    const failCount = tData.filter(r => r.entry?.resultStatus === 'Fail').length;
+                    if (transcriptLoading || !transcript) {
+                      return (
+                        <div className="bg-white rounded-xl shadow p-12 text-center text-gray-400 text-sm">
+                          {transcriptLoading ? 'Loading transcript…' : 'Failed to load transcript.'}
+                        </div>
+                      );
+                    }
+                    const semList  = transcript.bySemester.map(g => g.semester);
+                    const tGroup   = transcript.bySemester.find(g => g.semester === tSem) || transcript.bySemester[0];
+                    const tData    = tGroup?.entries || [];
+                    const passCount = tGroup?.passCount || 0;
+                    const failCount = tGroup?.failCount || 0;
                     const overallPass = tData.length > 0 && failCount === 0;
                     const avgPct = tData.length > 0 ? Math.round(tData.reduce((sum, r) => {
                       const absent = r.entry?.resultStatus === 'Absent' || r.entry?.resultStatus === 'Withheld';
-                      return sum + (absent ? 0 : ((r.entry?.obtainedMarks || 0) / (r.totalMarks || 100)) * 100);
+                      return sum + (absent ? 0 : r.percentage || 0);
                     }, 0) / tData.length) : 0;
 
                     return (
@@ -1624,6 +1973,8 @@ export default function StudentPortal() {
                                     ['Academic Session', tData[0]?.academicSession || student.session || '—'],
                                     ['Time Session',     student.timeSession || '—'],
                                     ['Date of Issue',    today],
+                                    ['Semester GPA',     tGroup?.gpa != null ? tGroup.gpa.toFixed(2) : 'N/A'],
+                                    ['Overall CGPA',     transcript.cgpa != null ? `${transcript.cgpa.toFixed(2)} / 4.00` : 'N/A'],
                                   ].map(([label, val]) => (
                                     <div key={label}>
                                       <p style={{ fontSize: '10px', color: '#94a3b8', fontWeight: '600', textTransform: 'uppercase', marginBottom: '2px' }}>{label}</p>
@@ -1635,10 +1986,11 @@ export default function StudentPortal() {
 
                               {/* Results table */}
                               <p style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '12px' }}>Academic Performance</p>
-                              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', marginBottom: '28px' }}>
+                              <div className="print-table-scroll" style={{ overflowX: 'auto', marginBottom: '28px' }}>
+                              <table style={{ width: '100%', minWidth: '760px', borderCollapse: 'collapse', fontSize: '13px' }}>
                                 <thead>
                                   <tr style={{ background: '#041476', color: 'white' }}>
-                                    {['#', 'Subject / Course', 'Exam Type', 'Total Marks', 'Obtained Marks', '%', 'Grade', 'Result', 'Remarks'].map(h => (
+                                    {['#', 'Subject / Course', 'Exam Type', 'Total Marks', 'Obtained Marks', '%', 'Grade', 'GPA', 'Result', 'Remarks'].map(h => (
                                       <th key={h} style={{ padding: '11px 12px', textAlign: 'left', fontSize: '10px', fontWeight: '700', letterSpacing: '0.5px', whiteSpace: 'nowrap' }}>{h}</th>
                                     ))}
                                   </tr>
@@ -1647,7 +1999,7 @@ export default function StudentPortal() {
                                   {tData.map((rc, idx) => {
                                     const e = rc.entry || {};
                                     const absent = e.resultStatus === 'Absent' || e.resultStatus === 'Withheld';
-                                    const pct = absent ? '—' : `${Math.round((e.obtainedMarks / rc.totalMarks) * 100)}%`;
+                                    const pct = absent ? '—' : `${rc.percentage}%`;
                                     return (
                                       <tr key={rc._id} style={{ background: idx % 2 === 0 ? '#ffffff' : '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
                                         <td style={{ padding: '11px 12px', color: '#94a3b8', fontSize: '11px' }}>{idx + 1}</td>
@@ -1658,8 +2010,11 @@ export default function StudentPortal() {
                                           {absent ? '—' : e.obtainedMarks ?? '—'}
                                         </td>
                                         <td style={{ padding: '11px 12px', textAlign: 'center', color: '#475569' }}>{pct}</td>
-                                        <td style={{ padding: '11px 12px', textAlign: 'center', fontWeight: '800', fontSize: '14px', color: GRADE_COLOR(e.grade) }}>
-                                          {absent ? '—' : (e.grade || '—')}
+                                        <td style={{ padding: '11px 12px', textAlign: 'center', fontWeight: '800', fontSize: '14px', color: GRADE_COLOR(rc.grade) }}>
+                                          {absent ? '—' : (rc.grade || '—')}
+                                        </td>
+                                        <td style={{ padding: '11px 12px', textAlign: 'center', fontWeight: '700', color: '#15803d' }}>
+                                          {absent ? '—' : (rc.gradePoints != null ? rc.gradePoints.toFixed(2) : '—')}
                                         </td>
                                         <td style={{ padding: '11px 12px' }}>
                                           <span style={{
@@ -1674,14 +2029,16 @@ export default function StudentPortal() {
                                   })}
                                 </tbody>
                               </table>
+                              </div>
 
                               {/* Summary stats */}
-                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '24px' }}>
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '12px', marginBottom: '24px' }}>
                                 {[
                                   ['Total Subjects',   tData.length,    '#e0e7ff', '#4338ca'],
                                   ['Passed',           passCount,        '#dcfce7', '#15803d'],
                                   ['Failed',           failCount,        '#fee2e2', '#b91c1c'],
                                   ['Avg Percentage',   `${avgPct}%`,     '#fef3c7', '#92400e'],
+                                  ['Semester GPA',     tGroup?.gpa != null ? tGroup.gpa.toFixed(2) : 'N/A', '#dbeafe', '#1d4ed8'],
                                 ].map(([label, val, bg, color]) => (
                                   <div key={label} style={{ background: bg, borderRadius: '10px', padding: '14px 16px', textAlign: 'center' }}>
                                     <p style={{ fontSize: '10px', color: '#64748b', fontWeight: '600', textTransform: 'uppercase', marginBottom: '4px' }}>{label}</p>
@@ -1707,8 +2064,9 @@ export default function StudentPortal() {
                                   </p>
                                 </div>
                                 <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                                  <p style={{ fontSize: '11px', color: '#94a3b8' }}>Average Score</p>
-                                  <p style={{ fontSize: '28px', fontWeight: '800', color: '#1e293b' }}>{avgPct}%</p>
+                                  <p style={{ fontSize: '11px', color: '#94a3b8' }}>Semester GPA</p>
+                                  <p style={{ fontSize: '28px', fontWeight: '800', color: '#1e293b' }}>{tGroup?.gpa != null ? tGroup.gpa.toFixed(2) : 'N/A'}</p>
+                                  <p style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>Overall CGPA: {transcript.cgpa != null ? transcript.cgpa.toFixed(2) : 'N/A'}</p>
                                 </div>
                               </div>
 
@@ -1744,12 +2102,18 @@ export default function StudentPortal() {
                   {/* Print styles */}
                   <style>{`
                     @media print {
+                      @page { size: A4; margin: 10mm; }
                       body * { visibility: hidden !important; }
                       #student-result-card,  #student-result-card  * { visibility: visible !important; }
                       #student-transcript,   #student-transcript   * { visibility: visible !important; }
                       #student-result-card  { position: fixed; top: 0; left: 0; width: 100%; background: white; }
                       #student-transcript   { position: fixed; top: 0; left: 0; width: 100%; background: white; }
                       .no-print { display: none !important; }
+                      /* The on-screen horizontal-scroll wrapper around wide
+                         tables must not clip content when printing — let the
+                         table shrink to the printable page width instead. */
+                      .print-table-scroll { overflow: visible !important; }
+                      .print-table-scroll table { width: 100% !important; min-width: 0 !important; }
                     }
                   `}</style>
 
@@ -1858,7 +2222,8 @@ export default function StudentPortal() {
                         <label className={labelCls}>Registration Number *</label>
                         <input type="text" required value={regData.registrationNo}
                           onChange={(e) => setRegData({ ...regData, registrationNo: e.target.value })}
-                          className={inputCls} placeholder="e.g. 2024-CS-001" />
+                          className={inputCls} placeholder="e.g. UOM-2024-0001" />
+                        <p className="text-xs text-gray-400 mt-1">Format: UOM-YYYY-NNNN (year, then a 4-digit number).</p>
                       </div>
                       <div>
                         <label className={labelCls}>Full Name *</label>
@@ -1909,24 +2274,30 @@ export default function StudentPortal() {
                       </div>
                       <div>
                         <label className={labelCls}>Department *</label>
-                        <select required value={regData.department}
-                          onChange={(e) => setRegData({ ...regData, department: e.target.value, program: '' })}
+                        <select required value={regData.departmentId}
+                          onChange={(e) => setRegData({ ...regData, departmentId: e.target.value, programId: '' })}
                           className={inputCls}>
                           <option value="">Select department</option>
-                          {deptList.map((d) => <option key={d.name}>{d.name}</option>)}
+                          {deptList.map((d) => <option key={d._id} value={d._id}>{d.name}</option>)}
                         </select>
                       </div>
                       <div>
                         <label className={labelCls}>Program *</label>
-                        <input type="text" required value={regData.program}
-                          onChange={(e) => setRegData({ ...regData, program: e.target.value })}
-                          className={inputCls} placeholder="e.g. BSCS, BEd, BSBOT" />
+                        <select required value={regData.programId} disabled={!regData.departmentId}
+                          onChange={(e) => setRegData({ ...regData, programId: e.target.value })}
+                          className={inputCls}>
+                          <option value="">{regData.departmentId ? 'Select program' : 'Select a department first'}</option>
+                          {programList.map((p) => <option key={p._id} value={p._id}>{p.title}</option>)}
+                        </select>
                       </div>
                       <div>
                         <label className={labelCls}>Academic Session *</label>
-                        <input type="text" required value={regData.session}
-                          onChange={(e) => setRegData({ ...regData, session: e.target.value })}
-                          className={inputCls} placeholder="e.g. 2024-2028" />
+                        <select required value={regData.sessionId}
+                          onChange={(e) => setRegData({ ...regData, sessionId: e.target.value })}
+                          className={inputCls}>
+                          <option value="">Select academic session</option>
+                          {sessionList.map((s) => <option key={s._id} value={s._id}>{s.name}</option>)}
+                        </select>
                       </div>
                       <div>
                         <label className={labelCls}>Time Session *</label>
@@ -1936,16 +2307,6 @@ export default function StudentPortal() {
                           <option value="">Select time session</option>
                           <option value="Morning">🌅 Morning</option>
                           <option value="Evening">🌙 Evening</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className={labelCls}>Current Semester *</label>
-                        <select required value={regData.currentSemester}
-                          onChange={(e) => setRegData({ ...regData, currentSemester: e.target.value })}
-                          className={inputCls}>
-                          {[1,2,3,4,5,6,7,8,9,10].map((s) => (
-                            <option key={s} value={s}>Semester {s}</option>
-                          ))}
                         </select>
                       </div>
                       <div>

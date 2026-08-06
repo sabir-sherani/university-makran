@@ -11,7 +11,7 @@ const BASE_URL = API ? API.replace(/\/api$/, '') : '';
 const fileUrl = (u) => u?.startsWith('http') ? u : `${BASE_URL}${u}`;
 
 
-const inputCls = 'w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-[#FA7902] text-sm';
+const inputCls = 'w-full px-4 py-2 min-h-11 border border-gray-300 rounded-lg focus:outline-none focus:border-[#FA7902] text-sm';
 const labelCls = 'block text-gray-700 font-semibold mb-1 text-sm';
 
 function RichTextEditor({ initialValue = '', onChange, key: _key }) {
@@ -70,6 +70,19 @@ function Alert({ type, message }) {
   return <div className={`border-l-4 px-4 py-3 rounded text-sm mb-4 ${colors}`}>{message}</div>;
 }
 
+// Formats an axios error into a single display string, appending
+// field-level validation detail when the API returned it — either the
+// express-validator `validate` middleware's { message, errors: {field: msg} }
+// shape, or a plain { message, errors: [msg, ...] } array shape.
+function formatApiError(err, fallback) {
+  const data = err.response?.data;
+  if (!data) return fallback;
+  let detail = '';
+  if (Array.isArray(data.errors)) detail = data.errors.join(' · ');
+  else if (data.errors && typeof data.errors === 'object') detail = Object.values(data.errors).join(' · ');
+  return detail ? `${data.message} ${detail}` : (data.message || fallback);
+}
+
 const emptyResultRow = () => ({ registrationNo: '', studentName: '', fatherName: '', obtainedGPA: '', totalGPA: '' });
 
 export default function TeacherPortal() {
@@ -91,9 +104,10 @@ export default function TeacherPortal() {
   // Register
   const [regData, setRegData] = useState({
     teacherId: '', fullName: '', email: '', password: '', phone: '',
-    cnic: '', department: '', qualification: '', designation: '',
+    cnic: '', departmentId: '', qualification: '', designationId: '',
     classesTaught: '',
   });
+  const [designationList, setDesignationList] = useState([]);
   const [regError, setRegError] = useState('');
   const [regSuccess, setRegSuccess] = useState('');
   const [regLoading, setRegLoading] = useState(false);
@@ -116,10 +130,12 @@ export default function TeacherPortal() {
   const [atReportLoading, setAtReportLoading] = useState(false);
 
   // Ongoing classes
-  const ocEmptyForm = { className: '', subject: '', department: '', program: '', semester: '', academicSession: '', timeSession: '', days: [], startTime: '', endTime: '', room: '', location: '', weeklyHours: '', maxStudents: '', status: 'active' };
+  const ocEmptyForm = { className: '', subject: '', departmentId: '', programId: '', semester: '', sessionId: '', timeSession: '', days: [], startTime: '', endTime: '', room: '', location: '', weeklyHours: '', maxStudents: '', status: 'active' };
   const [ocClasses, setOcClasses] = useState([]);
   const [ocLoading, setOcLoading] = useState(false);
   const [ocForm, setOcForm] = useState(ocEmptyForm);
+  const [ocProgramList, setOcProgramList] = useState([]);
+  const [ocSessionList, setOcSessionList] = useState([]);
   const [ocError, setOcError] = useState('');
   const [ocSaving, setOcSaving] = useState(false);
   const [ocShowForm, setOcShowForm] = useState(false);
@@ -222,7 +238,17 @@ export default function TeacherPortal() {
       setIsLoggedIn(true);
     }
     axios.get(`${API}/departments`).then(r => setDeptList(r.data)).catch(() => {});
+    axios.get(`${API}/lookups/designations`).then(r => setDesignationList(r.data)).catch(() => {});
+    axios.get(`${API}/lookups/sessions`).then(r => setOcSessionList(r.data)).catch(() => {});
   }, []);
+
+  // Programs for the "Add Ongoing Class" form cascade from its selected department
+  useEffect(() => {
+    if (!ocForm.departmentId) { setOcProgramList([]); return; }
+    axios.get(`${API}/lookups/programs`, { params: { department: ocForm.departmentId } })
+      .then(r => setOcProgramList(r.data))
+      .catch(() => setOcProgramList([]));
+  }, [ocForm.departmentId]);
 
   useEffect(() => {
     if (router.query.tab === 'register') setTab('register');
@@ -445,7 +471,7 @@ export default function TeacherPortal() {
       setRsSuccess('Draft saved successfully!');
       fetchResultSheets();
     } catch (err) {
-      setRsError(err.response?.data?.message || 'Failed to save result sheet.');
+      setRsError(formatApiError(err, 'Failed to save result sheet.'));
     }
     setRsSaving(false);
   }
@@ -459,7 +485,7 @@ export default function TeacherPortal() {
       fetchResultSheets();
       openRsDetail(r.data);
     } catch (err) {
-      setRsError(err.response?.data?.message || 'Failed to submit result sheet.');
+      setRsError(formatApiError(err, 'Failed to submit result sheet.'));
     }
     setRsSubmitting(false);
   }
@@ -515,7 +541,7 @@ export default function TeacherPortal() {
     try {
       await axios.post(`${API}/portal/teacher/register`, regData);
       setRegSuccess('Registration submitted successfully! Your account is pending admin approval.');
-      setRegData({ teacherId: '', fullName: '', email: '', password: '', phone: '', cnic: '', department: '', qualification: '', designation: '', classesTaught: '' });
+      setRegData({ teacherId: '', fullName: '', email: '', password: '', phone: '', cnic: '', departmentId: '', qualification: '', designationId: '', classesTaught: '' });
     } catch (err) {
       setRegError(err.response?.data?.message || 'Registration failed. Please try again.');
     }
@@ -1007,6 +1033,7 @@ export default function TeacherPortal() {
                       <p className="text-gray-400 text-sm mt-1">Click "+ Add Subject" to declare what you teach.</p>
                     </div>
                   ) : (
+                    <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead className="bg-orange-50 border-b border-orange-100">
                         <tr>
@@ -1036,6 +1063,7 @@ export default function TeacherPortal() {
                         ))}
                       </tbody>
                     </table>
+                    </div>
                   )}
                 </div>
               </div>
@@ -1076,16 +1104,21 @@ export default function TeacherPortal() {
                         </div>
                         <div>
                           <label className={labelCls}>Department *</label>
-                          <select required value={ocForm.department}
-                            onChange={(e) => setOcForm(f => ({...f, department: e.target.value}))}
+                          <select required value={ocForm.departmentId}
+                            onChange={(e) => setOcForm(f => ({...f, departmentId: e.target.value, programId: ''}))}
                             className={inputCls}>
                             <option value="">Select</option>
-                            {deptList.map((d) => <option key={d.name}>{d.name}</option>)}
+                            {deptList.map((d) => <option key={d._id} value={d._id}>{d.name}</option>)}
                           </select>
                         </div>
                         <div>
                           <label className={labelCls}>Program</label>
-                          <input type="text" value={ocForm.program} onChange={(e) => setOcForm(f => ({...f, program: e.target.value}))} className={inputCls} placeholder="e.g. BSCS" />
+                          <select value={ocForm.programId} disabled={!ocForm.departmentId}
+                            onChange={(e) => setOcForm(f => ({...f, programId: e.target.value}))}
+                            className={inputCls}>
+                            <option value="">{ocForm.departmentId ? 'Select' : 'Select a department first'}</option>
+                            {ocProgramList.map((p) => <option key={p._id} value={p._id}>{p.title}</option>)}
+                          </select>
                         </div>
                         <div>
                           <label className={labelCls}>Semester</label>
@@ -1096,7 +1129,10 @@ export default function TeacherPortal() {
                         </div>
                         <div>
                           <label className={labelCls}>Academic Session</label>
-                          <input type="text" value={ocForm.academicSession} onChange={(e) => setOcForm(f => ({...f, academicSession: e.target.value}))} className={inputCls} placeholder="e.g. 2024-2028" />
+                          <select value={ocForm.sessionId} onChange={(e) => setOcForm(f => ({...f, sessionId: e.target.value}))} className={inputCls}>
+                            <option value="">Select</option>
+                            {ocSessionList.map((s) => <option key={s._id} value={s._id}>{s.name}</option>)}
+                          </select>
                         </div>
                         <div>
                           <label className={labelCls}>Time Session</label>
@@ -1359,6 +1395,7 @@ export default function TeacherPortal() {
                         <div>
                           <label className={labelCls}>Date *</label>
                           <input type="date" value={atDate} onChange={e => setAtDate(e.target.value)}
+                            max={new Date().toISOString().split('T')[0]}
                             className={inputCls} required />
                         </div>
                       </div>
@@ -1500,6 +1537,7 @@ export default function TeacherPortal() {
                           <label className={labelCls}>Date</label>
                           <input type="date" value={atEditSession.date?.split?.('T')[0] || atEditSession.date}
                             onChange={e => setAtEditSession(p => ({ ...p, date: e.target.value }))}
+                            max={new Date().toISOString().split('T')[0]}
                             className={`${inputCls} max-w-xs`} />
                         </div>
                         <form onSubmit={handleEditAttendanceSession} className="space-y-4">
@@ -2073,10 +2111,10 @@ export default function TeacherPortal() {
             {activeSection === 'assignments' && (
               <div className="space-y-6">
                 {/* Header */}
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-3">
                   <h2 className="text-2xl font-bold text-[#FA7902]">Assignments</h2>
                   <button onClick={() => { setShowAForm(v => !v); setAError(''); setASuccess(''); }}
-                    className="bg-[#FA7902] text-white px-5 py-2 rounded-lg text-sm font-semibold hover:opacity-90 transition">
+                    className="bg-[#FA7902] text-white px-5 py-2 min-h-11 rounded-lg text-sm font-semibold hover:opacity-90 transition">
                     {showAForm ? '✕ Cancel' : '+ New Assignment'}
                   </button>
                 </div>
@@ -2477,7 +2515,7 @@ export default function TeacherPortal() {
                         <p className="text-gray-400 text-sm mt-1">Create a mark sheet to enter obtained marks for your subject.</p>
                       </div>
                     ) : (
-                      <div className="bg-white rounded-xl shadow overflow-hidden">
+                      <div className="bg-white rounded-xl shadow overflow-x-auto">
                         <table className="w-full text-sm">
                           <thead className="bg-gray-50 border-b border-gray-100">
                             <tr>
@@ -2528,13 +2566,13 @@ export default function TeacherPortal() {
                 {/* ── FORM VIEW (create / edit draft) ── */}
                 {rsView === 'form' && (
                   <>
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <div>
                         <h2 className="text-2xl font-bold text-[#FA7902]">{rsEditing ? 'Edit Mark Sheet' : 'New Mark Sheet'}</h2>
                         <p className="text-gray-500 text-xs mt-0.5">Enter obtained marks for your subject (0–100). GPA and grade are auto-calculated.</p>
                       </div>
                       <button onClick={() => setRsView('list')}
-                        className="px-4 py-2 rounded-lg border border-gray-300 text-gray-600 text-sm font-semibold hover:bg-gray-50 transition">
+                        className="shrink-0 px-4 py-2 min-h-11 rounded-lg border border-gray-300 text-gray-600 text-sm font-semibold hover:bg-gray-50 transition">
                         ← Back to List
                       </button>
                     </div>
@@ -2737,6 +2775,14 @@ export default function TeacherPortal() {
                       </div>
                     </div>
 
+                    {rsSelected.status === 'draft' && rsSelected.returnedRemarks && (
+                      <div className="no-print border-l-4 border-orange-400 bg-orange-50 text-orange-800 px-4 py-3 rounded text-sm">
+                        <p className="font-bold">Returned by Examination Section for correction</p>
+                        <p className="mt-1">{rsSelected.returnedRemarks}</p>
+                        {rsSelected.returnedAt && <p className="text-xs text-orange-600 mt-1">{new Date(rsSelected.returnedAt).toLocaleString('en-GB')}</p>}
+                      </div>
+                    )}
+
                     {/* Printable result sheet */}
                     <div id="rs-printable" className="bg-white rounded-xl shadow p-6">
                       {/* Print header — professional university layout */}
@@ -2784,7 +2830,7 @@ export default function TeacherPortal() {
                       </div>
 
                       {/* Entries table */}
-                      <div className="overflow-x-auto">
+                      <div className="overflow-x-auto print-table-scroll">
                         <table className="w-full text-sm">
                           <thead>
                             <tr className="border-b-2 border-gray-200 bg-gray-50">
@@ -2960,11 +3006,14 @@ export default function TeacherPortal() {
                 {/* Print styles */}
                 <style>{`
                   @media print {
+                    @page { size: A4; margin: 10mm; }
                     body * { visibility: hidden; }
                     #rs-printable, #rs-printable * { visibility: visible; }
                     #rs-printable { position: fixed; top: 0; left: 0; width: 100%; }
                     .no-print { display: none !important; }
                     .print-only { display: block !important; }
+                    .print-table-scroll { overflow: visible !important; }
+                    .print-table-scroll table { width: 100% !important; min-width: 0 !important; }
                   }
                 `}</style>
 
@@ -3156,11 +3205,11 @@ export default function TeacherPortal() {
                       </div>
                       <div>
                         <label className={labelCls}>Department</label>
-                        <select value={regData.department}
-                          onChange={(e) => setRegData({ ...regData, department: e.target.value })}
+                        <select value={regData.departmentId}
+                          onChange={(e) => setRegData({ ...regData, departmentId: e.target.value })}
                           className={inputCls}>
                           <option value="">Select department</option>
-                          {deptList.map((d) => <option key={d.name}>{d.name}</option>)}
+                          {deptList.map((d) => <option key={d._id} value={d._id}>{d.name}</option>)}
                         </select>
                       </div>
                       <div>
@@ -3171,9 +3220,12 @@ export default function TeacherPortal() {
                       </div>
                       <div>
                         <label className={labelCls}>Designation</label>
-                        <input type="text" value={regData.designation}
-                          onChange={(e) => setRegData({ ...regData, designation: e.target.value })}
-                          className={inputCls} placeholder="e.g. Assistant Professor" />
+                        <select value={regData.designationId}
+                          onChange={(e) => setRegData({ ...regData, designationId: e.target.value })}
+                          className={inputCls}>
+                          <option value="">Select designation</option>
+                          {designationList.map((d) => <option key={d._id} value={d._id}>{d.title}</option>)}
+                        </select>
                       </div>
                     </div>
                     <div>
