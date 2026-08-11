@@ -57,6 +57,7 @@ export default function StudentPortal() {
     password: '', confirmPassword: '',
   });
   const [regError, setRegError] = useState('');
+  const [regFieldErrors, setRegFieldErrors] = useState({});
   const [regSuccess, setRegSuccess] = useState('');
   const [regLoading, setRegLoading] = useState(false);
 
@@ -313,9 +314,14 @@ export default function StudentPortal() {
     setForgotLoading(false);
   };
 
+  const regInputCls = (field) => regFieldErrors[field]
+    ? inputCls.replace('border-gray-300', 'border-red-400') + ' focus:border-red-500'
+    : inputCls;
+
   const handleRegister = async (e) => {
     e.preventDefault();
     setRegError('');
+    setRegFieldErrors({});
     setRegSuccess('');
     if (regData.password !== regData.confirmPassword) {
       return setRegError('Passwords do not match.');
@@ -331,12 +337,13 @@ export default function StudentPortal() {
       setRegData({
         registrationNo: '', fullName: '', email: '', phone: '', cnic: '',
         fatherName: '', gender: '', dateOfBirth: '', address: '', timeSession: '',
-        departmentId: '', programId: '', sessionId: '', currentSemester: '1',
+        departmentId: '', programId: '', sessionId: '',
         rollNo: '',
         password: '', confirmPassword: '',
       });
     } catch (err) {
       setRegError(err.response?.data?.message || 'Registration failed. Please try again.');
+      setRegFieldErrors(err.response?.data?.errors || {});
     }
     setRegLoading(false);
   };
@@ -2222,99 +2229,118 @@ export default function StudentPortal() {
                         <label className={labelCls}>Registration Number *</label>
                         <input type="text" required value={regData.registrationNo}
                           onChange={(e) => setRegData({ ...regData, registrationNo: e.target.value })}
-                          className={inputCls} placeholder="e.g. UOM-2024-0001" />
-                        <p className="text-xs text-gray-400 mt-1">Format: UOM-YYYY-NNNN (year, then a 4-digit number).</p>
+                          className={regInputCls('registrationNo')} placeholder="e.g. UOM-2024-0001" />
+                        {regFieldErrors.registrationNo
+                          ? <p className="text-xs text-red-600 mt-1">{regFieldErrors.registrationNo}</p>
+                          : <p className="text-xs text-gray-400 mt-1">Format: UOM-YYYY-NNNN (year, then a 4-digit number).</p>}
                       </div>
                       <div>
                         <label className={labelCls}>Full Name *</label>
                         <input type="text" required value={regData.fullName}
                           onChange={(e) => setRegData({ ...regData, fullName: e.target.value })}
-                          className={inputCls} placeholder="Your full name" />
+                          className={regInputCls('fullName')} placeholder="Your full name" />
+                        {regFieldErrors.fullName && <p className="text-xs text-red-600 mt-1">{regFieldErrors.fullName}</p>}
                       </div>
                       <div>
                         <label className={labelCls}>Email Address *</label>
                         <input type="email" required value={regData.email}
                           onChange={(e) => setRegData({ ...regData, email: e.target.value })}
-                          className={inputCls} placeholder="you@example.com" />
+                          className={regInputCls('email')} placeholder="you@example.com" />
+                        {regFieldErrors.email && <p className="text-xs text-red-600 mt-1">{regFieldErrors.email}</p>}
                       </div>
                       <div>
                         <label className={labelCls}>Phone Number *</label>
                         <input type="text" required value={regData.phone}
                           onChange={(e) => setRegData({ ...regData, phone: e.target.value })}
-                          className={inputCls} placeholder="03XX-XXXXXXX" />
+                          className={regInputCls('phone')} placeholder="03XX-XXXXXXX" />
+                        {regFieldErrors.phone
+                          ? <p className="text-xs text-red-600 mt-1">{regFieldErrors.phone}</p>
+                          : <p className="text-xs text-gray-400 mt-1">Format: 03XXXXXXXXX (11 digits, starts with 03).</p>}
                       </div>
                       <div>
                         <label className={labelCls}>CNIC *</label>
                         <input type="text" required value={regData.cnic}
                           onChange={(e) => setRegData({ ...regData, cnic: e.target.value })}
-                          className={inputCls} placeholder="XXXXX-XXXXXXX-X" />
+                          className={regInputCls('cnic')} placeholder="XXXXX-XXXXXXX-X" />
+                        {regFieldErrors.cnic
+                          ? <p className="text-xs text-red-600 mt-1">{regFieldErrors.cnic}</p>
+                          : <p className="text-xs text-gray-400 mt-1">Format: XXXXX-XXXXXXX-X (with dashes).</p>}
                       </div>
                       <div>
                         <label className={labelCls}>Father&apos;s Name *</label>
                         <input type="text" required value={regData.fatherName}
                           onChange={(e) => setRegData({ ...regData, fatherName: e.target.value })}
-                          className={inputCls} placeholder="Father's full name" />
+                          className={regInputCls('fatherName')} placeholder="Father's full name" />
+                        {regFieldErrors.fatherName && <p className="text-xs text-red-600 mt-1">{regFieldErrors.fatherName}</p>}
                       </div>
                       <div>
                         <label className={labelCls}>Gender *</label>
                         <select required value={regData.gender}
                           onChange={(e) => setRegData({ ...regData, gender: e.target.value })}
-                          className={inputCls}>
+                          className={regInputCls('gender')}>
                           <option value="">Select gender</option>
                           <option>Male</option>
                           <option>Female</option>
                           <option>Other</option>
                         </select>
+                        {regFieldErrors.gender && <p className="text-xs text-red-600 mt-1">{regFieldErrors.gender}</p>}
                       </div>
                       <div>
                         <label className={labelCls}>Date of Birth *</label>
                         <input type="date" required value={regData.dateOfBirth}
                           onChange={(e) => setRegData({ ...regData, dateOfBirth: e.target.value })}
-                          className={inputCls} />
+                          className={regInputCls('dateOfBirth')} />
+                        {regFieldErrors.dateOfBirth && <p className="text-xs text-red-600 mt-1">{regFieldErrors.dateOfBirth}</p>}
                       </div>
                       <div>
                         <label className={labelCls}>Department *</label>
                         <select required value={regData.departmentId}
                           onChange={(e) => setRegData({ ...regData, departmentId: e.target.value, programId: '' })}
-                          className={inputCls}>
+                          className={regInputCls('departmentId')}>
                           <option value="">Select department</option>
                           {deptList.map((d) => <option key={d._id} value={d._id}>{d.name}</option>)}
                         </select>
+                        {regFieldErrors.departmentId && <p className="text-xs text-red-600 mt-1">{regFieldErrors.departmentId}</p>}
                       </div>
                       <div>
                         <label className={labelCls}>Program *</label>
                         <select required value={regData.programId} disabled={!regData.departmentId}
                           onChange={(e) => setRegData({ ...regData, programId: e.target.value })}
-                          className={inputCls}>
+                          className={regInputCls('programId')}>
                           <option value="">{regData.departmentId ? 'Select program' : 'Select a department first'}</option>
                           {programList.map((p) => <option key={p._id} value={p._id}>{p.title}</option>)}
                         </select>
+                        {regFieldErrors.programId && <p className="text-xs text-red-600 mt-1">{regFieldErrors.programId}</p>}
                       </div>
                       <div>
                         <label className={labelCls}>Academic Session *</label>
                         <select required value={regData.sessionId}
                           onChange={(e) => setRegData({ ...regData, sessionId: e.target.value })}
-                          className={inputCls}>
+                          className={regInputCls('sessionId')}>
                           <option value="">Select academic session</option>
                           {sessionList.map((s) => <option key={s._id} value={s._id}>{s.name}</option>)}
                         </select>
+                        {regFieldErrors.sessionId && <p className="text-xs text-red-600 mt-1">{regFieldErrors.sessionId}</p>}
                       </div>
                       <div>
                         <label className={labelCls}>Time Session *</label>
                         <select required value={regData.timeSession}
                           onChange={(e) => setRegData({ ...regData, timeSession: e.target.value })}
-                          className={inputCls}>
+                          className={regInputCls('timeSession')}>
                           <option value="">Select time session</option>
                           <option value="Morning">🌅 Morning</option>
                           <option value="Evening">🌙 Evening</option>
                         </select>
+                        {regFieldErrors.timeSession && <p className="text-xs text-red-600 mt-1">{regFieldErrors.timeSession}</p>}
                       </div>
                       <div>
                         <label className={labelCls}>Roll Number <span className="font-normal text-gray-400">(optional)</span></label>
                         <input type="text" value={regData.rollNo}
                           onChange={(e) => setRegData({ ...regData, rollNo: e.target.value })}
-                          className={inputCls} placeholder="Get this from your teacher or HOD" />
-                        <p className="text-xs text-gray-400 mt-1">You can add or update this later from your profile.</p>
+                          className={regInputCls('rollNo')} placeholder="Get this from your teacher or HOD" />
+                        {regFieldErrors.rollNo
+                          ? <p className="text-xs text-red-600 mt-1">{regFieldErrors.rollNo}</p>
+                          : <p className="text-xs text-gray-400 mt-1">You can add or update this later from your profile.</p>}
                       </div>
                     </div>
 
@@ -2322,7 +2348,8 @@ export default function StudentPortal() {
                       <label className={labelCls}>Address *</label>
                       <textarea required value={regData.address}
                         onChange={(e) => setRegData({ ...regData, address: e.target.value })}
-                        className={inputCls} rows={2} placeholder="Your home address" />
+                        className={regInputCls('address')} rows={2} placeholder="Your home address" />
+                      {regFieldErrors.address && <p className="text-xs text-red-600 mt-1">{regFieldErrors.address}</p>}
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2331,12 +2358,15 @@ export default function StudentPortal() {
                         <div className="relative">
                           <input type={showRegPw ? 'text' : 'password'} required minLength={8} value={regData.password}
                             onChange={(e) => setRegData({ ...regData, password: e.target.value })}
-                            className={inputCls} />
+                            className={regInputCls('password')} />
                           <button type="button" onClick={() => setShowRegPw(!showRegPw)}
                             className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs">
                             {showRegPw ? 'Hide' : 'Show'}
                           </button>
                         </div>
+                        {regFieldErrors.password
+                          ? <p className="text-xs text-red-600 mt-1">{regFieldErrors.password}</p>
+                          : <p className="text-xs text-gray-400 mt-1">Must include at least one letter and one digit.</p>}
                       </div>
                       <div>
                         <label className={labelCls}>Confirm Password *</label>
