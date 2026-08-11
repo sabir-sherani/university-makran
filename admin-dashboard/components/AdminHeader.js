@@ -26,6 +26,7 @@ import {
   LuLock,
   LuHistory,
   LuReceipt,
+  LuCalendarRange,
 } from 'react-icons/lu';
 
 const API = process.env.NEXT_PUBLIC_API_URL;
@@ -38,6 +39,7 @@ const NAV = [
   { label: 'Administration',  href: '/admin/administration', Icon: LuBuilding2 },
   { label: 'Departments',     href: '/admin/departments',    Icon: LuGraduationCap },
   { label: 'Programs',        href: '/admin/programs',       Icon: LuBookOpen },
+  { label: 'Academic Sessions', href: '/admin/academic-sessions', Icon: LuCalendarRange },
   { label: 'Faculty',         href: '/admin/faculty',        Icon: LuUsers },
   { label: 'Courses',         href: '/admin/courses',        Icon: LuBookMarked },
   { label: 'Facilities',      href: '/admin/facilities',     Icon: LuBuilding },
