@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/router';
@@ -70,10 +70,20 @@ function getAdminToken() {
   return localStorage.getItem('adminToken') || localStorage.getItem('token') || '';
 }
 
+// Sidebar remounts on every page navigation (it's rendered per-page, not in a
+// shared layout), which would otherwise reset its scroll position to the top.
+// Persisting it in module state survives the remount since the SPA session stays alive.
+let sidebarScrollTop = 0;
+
 export default function AdminHeader() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [notifs, setNotifs] = useState({ messages: 0, applications: 0, feedback: 0, pendingStudents: 0, pendingTeachers: 0, pendingCorrectionRequests: 0 });
   const router = useRouter();
+  const navRef = useRef(null);
+
+  useLayoutEffect(() => {
+    if (navRef.current) navRef.current.scrollTop = sidebarScrollTop;
+  }, []);
 
   useEffect(() => {
     async function fetchNotifs() {
@@ -138,7 +148,11 @@ export default function AdminHeader() {
         </div>
 
         {/* Nav links */}
-        <nav className="flex-1 overflow-y-auto py-3 px-3">
+        <nav
+          ref={navRef}
+          onScroll={(e) => { sidebarScrollTop = e.currentTarget.scrollTop; }}
+          className="flex-1 overflow-y-auto py-3 px-3"
+        >
           {NAV.map(({ label, href, Icon }) => {
             const active     = router.pathname === href || router.pathname.startsWith(href + '/');
             const badgeKey   = BADGE_KEYS[href];
