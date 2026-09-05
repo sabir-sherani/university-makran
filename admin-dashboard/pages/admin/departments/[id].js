@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import AdminHeader from '../../../components/AdminHeader';
 import axios from 'axios';
+import formatApiError from '../../../utils/formatApiError';
 
 const RichText = dynamic(() => import('../../../components/RichTextEditor'), { ssr: false });
 
@@ -393,7 +394,7 @@ export default function DepartmentEditor() {
       setMsg({ text: 'Saved successfully!', ok: true });
       setDeptName(form.name);
     } catch (err) {
-      setMsg({ text: err.response?.data?.message || 'Error saving.', ok: false });
+      setMsg({ text: formatApiError(err, 'Error saving.'), ok: false });
     }
     setSaving(false);
   }

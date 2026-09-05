@@ -36,6 +36,7 @@ All three talk to each other only over HTTP — `frontend` and `admin-dashboard`
 | `CLOUDINARY_CLOUD_NAME` | Optional | `your-cloud-name` | See [File uploads](#file-uploads--cloudinary-optional). |
 | `CLOUDINARY_API_KEY` | Optional | — | Required together with the other two Cloudinary vars, or none of them. |
 | `CLOUDINARY_API_SECRET` | Optional | — | Required together with the other two Cloudinary vars, or none of them. |
+| `JOB_SECRET` | For scheduled reminders | `openssl rand -hex 32` output | Shared secret the daily-jobs scheduler sends as the `x-job-secret` header on `POST /api/jobs/daily` — see [Scheduled jobs](#8-scheduled-jobs) below. Without it, that endpoint always returns 401 (safe default: the job simply never runs, rather than running unauthenticated). |
 
 ### `frontend/.env.local` and `admin-dashboard/.env.local`
 
@@ -129,9 +130,58 @@ It's idempotent — re-running it skips anything that already exists by unique k
 
 Run it against Atlas by pointing `MONGO_URI` at the Atlas connection string when invoking it — e.g. from your local machine with the production `MONGO_URI` temporarily exported, or as a one-off Railway job with the same env vars as the deployed service.
 
+## 8. Scheduled jobs
+
+Faculty document reminders, absence-threshold alerts and exam-eligibility warnings (backend/jobs/dailyJobs.js) are **not** an in-process `setInterval`/`node-cron` job — the deployment targets (`vercel.json`, `nixpacks.toml`) are serverless-ish, and a long-lived timer doesn't survive that. Instead, `POST /api/jobs/daily` is a secured HTTP endpoint that something *outside* the app calls once a day. Pick one:
+
+### Option A — Vercel Cron (if the backend itself is deployed to Vercel)
+
+Add to the backend's `vercel.json`:
+
+```json
+{
+  "crons": [{ "path": "/api/jobs/daily", "schedule": "0 1 * * *" }]
+}
+```
+
+`0 1 * * *` is 01:00 UTC = 06:00 PKT. Vercel Cron sends a plain GET with no custom headers, so this option alone can't supply `x-job-secret` — pair it with a thin proxy route or switch to Option C if you need the header-based secret enforced.
+
+### Option B — Railway scheduled job (recommended when the backend is on Railway, per the main deployment steps above)
+
+Railway project → your backend service → **Cron Schedule** → `0 1 * * *` (01:00 UTC / 06:00 PKT) → command:
+
+```bash
+curl -sf -X POST "$RAILWAY_PUBLIC_DOMAIN/api/jobs/daily" -H "x-job-secret: $JOB_SECRET"
+```
+
+### Option C — GitHub Action (works regardless of host)
+
+`.github/workflows/daily-jobs.yml`:
+
+```yaml
+name: Daily jobs
+on:
+  schedule:
+    - cron: '0 1 * * *'   # 01:00 UTC = 06:00 PKT
+  workflow_dispatch: {}    # allows a manual "Run workflow" click too
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger POST /api/jobs/daily
+        run: |
+          curl -sf -X POST "${{ secrets.BACKEND_URL }}/api/jobs/daily" \
+            -H "x-job-secret: ${{ secrets.JOB_SECRET }}"
+```
+
+Add `BACKEND_URL` (e.g. `https://your-backend.up.railway.app/api`, no trailing slash) and `JOB_SECRET` (the same value as the backend's `JOB_SECRET` env var) as repo secrets.
+
+Whichever option you use, the endpoint is idempotent — every notification it creates is deduped by a date-stamped key, so triggering it more than once on the same day (a retry, an overlapping manual run) never double-sends. To run it once locally instead of over HTTP: `cd backend && node scripts/runDailyJobs.js`.
+
 ## Security checklist before going live
 
 - [ ] `JWT_SECRET` is a long random value, not the sample from `.env.example`
+- [ ] `JOB_SECRET` is set to a long random value and matches whatever the scheduler sends (see [Scheduled jobs](#8-scheduled-jobs))
 - [ ] `NODE_ENV=production` on the deployed backend (hides stack traces from API error responses)
 - [ ] `ALLOWED_ORIGINS` lists only the real frontend/admin-dashboard domains — not `*`, not left unset
 - [ ] MongoDB Atlas database user password is strong and unique to this project

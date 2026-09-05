@@ -87,4 +87,49 @@ async function sendSuspensionOtpEmail(toEmail, deptName, otp, action) {
   });
 }
 
-module.exports = { sendPasswordResetEmail, sendSuspensionOtpEmail };
+// Generic template for utils/notify.js — every in-app notification that
+// wants an email uses this one shell instead of a bespoke template per
+// category, so new notification categories never need a new mailer function.
+async function sendNotificationEmail(toEmail, recipientName, title, body, link) {
+  const fullLink = link
+    ? (link.startsWith('http') ? link : `${process.env.FRONTEND_URL || 'http://localhost:3000'}${link}`)
+    : '';
+  await transporter.sendMail({
+    from: `"University of Makran" <${process.env.GMAIL_USER}>`,
+    to: toEmail,
+    subject: title,
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#f9fafb;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;">
+        <div style="background:linear-gradient(135deg,#041476,#0a2580);padding:32px 40px;text-align:center;">
+          <h1 style="color:#fff;font-size:22px;margin:0;font-weight:700;">University of Makran</h1>
+          <p style="color:rgba(255,255,255,0.7);font-size:13px;margin:6px 0 0;">Notification</p>
+        </div>
+
+        <div style="padding:36px 40px;background:#fff;">
+          ${recipientName ? `<p style="color:#374151;font-size:15px;margin:0 0 16px;">Hello <strong>${recipientName}</strong>,</p>` : ''}
+          <p style="color:#111827;font-size:16px;font-weight:700;margin:0 0 10px;">${title}</p>
+          ${body ? `<p style="color:#6b7280;font-size:14px;line-height:1.6;margin:0 0 24px;">${body}</p>` : ''}
+
+          ${fullLink ? `
+          <div style="text-align:center;margin:32px 0;">
+            <a href="${fullLink}" style="display:inline-block;background:linear-gradient(135deg,#041476,#0a2580);color:#fff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:15px;letter-spacing:0.3px;">
+              View in Portal
+            </a>
+          </div>` : ''}
+
+          <p style="color:#9ca3af;font-size:12px;line-height:1.6;margin:24px 0 0;border-top:1px solid #f3f4f6;padding-top:20px;">
+            This is an automated notification from your University of Makran portal account.
+          </p>
+        </div>
+
+        <div style="background:#f9fafb;padding:16px 40px;text-align:center;border-top:1px solid #e5e7eb;">
+          <p style="color:#9ca3af;font-size:11px;margin:0;">
+            © ${new Date().getFullYear()} University of Makran, Panjgur · Balochistan, Pakistan
+          </p>
+        </div>
+      </div>
+    `,
+  });
+}
+
+module.exports = { sendPasswordResetEmail, sendSuspensionOtpEmail, sendNotificationEmail };

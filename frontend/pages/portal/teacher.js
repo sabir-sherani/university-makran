@@ -5,6 +5,8 @@ import Footer from '../../components/Footer.js';
 import HeroSection from '../../components/HeroSection.js';
 import axios from 'axios';
 import { useRouter } from 'next/router';
+import TimetableGrid from '../../components/portal/TimetableGrid.js';
+import NotificationBell from '../../components/portal/NotificationBell.js';
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 const BASE_URL = API ? API.replace(/\/api$/, '') : '';
@@ -83,7 +85,24 @@ function formatApiError(err, fallback) {
   return detail ? `${data.message} ${detail}` : (data.message || fallback);
 }
 
+// Single source of truth for how a make-up session reads wherever attendance
+// is listed — mirrors backend/utils/attendanceSummary.js's formatMakeupLabel()
+// so the wording stays identical between server-rendered and client-rendered
+// views.
+function formatMakeupLabel(session) {
+  if (!session?.isMakeup) return null;
+  const fmt = (d) => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  const heldOn = session.date ? fmt(session.date) : 'an unspecified date';
+  const missedOn = session.makeupFor ? fmt(session.makeupFor) : 'an unspecified date';
+  return `Make-up class (held ${heldOn}, for the class missed on ${missedOn})`;
+}
+
 const emptyResultRow = () => ({ registrationNo: '', studentName: '', fatherName: '', obtainedGPA: '', totalGPA: '' });
+
+// These are administrative staff designations (assigned by admin to HOD/Exam/Finance
+// accounts), not teaching designations — hidden here so a self-registering teacher
+// can't pick one.
+const NON_TEACHING_DESIGNATIONS = ['Head of Department', 'Examination Officer', 'Finance Officer'];
 
 export default function TeacherPortal() {
   const router = useRouter();
@@ -109,6 +128,7 @@ export default function TeacherPortal() {
   });
   const [designationList, setDesignationList] = useState([]);
   const [regError, setRegError] = useState('');
+  const [regFieldErrors, setRegFieldErrors] = useState({});
   const [regSuccess, setRegSuccess] = useState('');
   const [regLoading, setRegLoading] = useState(false);
 
@@ -120,6 +140,9 @@ export default function TeacherPortal() {
   const [atClassId, setAtClassId]         = useState('');
   const [atDate, setAtDate]               = useState(new Date().toISOString().split('T')[0]);
   const [atRecords, setAtRecords]         = useState([]);
+  const [atIsMakeup, setAtIsMakeup]       = useState(false);
+  const [atMakeupFor, setAtMakeupFor]     = useState('');
+  const [atMakeupReason, setAtMakeupReason] = useState('');
   const [atSaving, setAtSaving]           = useState(false);
   const [atError, setAtError]             = useState('');
   const [atSuccess, setAtSuccess]         = useState('');
@@ -129,26 +152,11 @@ export default function TeacherPortal() {
   const [atReport, setAtReport]           = useState(null);
   const [atReportLoading, setAtReportLoading] = useState(false);
 
-  // Ongoing classes
-  const ocEmptyForm = { className: '', subject: '', departmentId: '', programId: '', semester: '', sessionId: '', timeSession: '', days: [], startTime: '', endTime: '', room: '', location: '', weeklyHours: '', maxStudents: '', status: 'active' };
+  // Ongoing classes — read-only for teachers; the HOD assigns these (see hod.js).
   const [ocClasses, setOcClasses] = useState([]);
   const [ocLoading, setOcLoading] = useState(false);
-  const [ocForm, setOcForm] = useState(ocEmptyForm);
-  const [ocProgramList, setOcProgramList] = useState([]);
-  const [ocSessionList, setOcSessionList] = useState([]);
-  const [ocError, setOcError] = useState('');
-  const [ocSaving, setOcSaving] = useState(false);
-  const [ocShowForm, setOcShowForm] = useState(false);
-  const [ocEditId, setOcEditId] = useState(null);
-  const [ocEditForm, setOcEditForm] = useState({});
-  const [ocEditSaving, setOcEditSaving] = useState(false);
-  const [ocDeleting, setOcDeleting] = useState(null);
-
-  // Teaching assignments
-  const [taAssignments, setTaAssignments] = useState([]);
-  const [taForm, setTaForm] = useState({ department: '', session: '', weeklyHours: '', academicSession: '' });
-  const [taError, setTaError] = useState('');
-  const [taSaving, setTaSaving] = useState(false);
+  const [timetable, setTimetable] = useState({ grid: { days: [], byDay: {} } });
+  const [timetableLoading, setTimetableLoading] = useState(false);
 
 
   // Results
@@ -215,12 +223,14 @@ export default function TeacherPortal() {
   const [rsView, setRsView]                   = useState('list'); // 'list' | 'form' | 'detail'
   const [rsEditing, setRsEditing]             = useState(null);   // draft sheet when in form view
   const [rsSelected, setRsSelected]           = useState(null);   // sheet in detail view
-  const [rsForm, setRsForm]                   = useState({ ongoingClassId: '', examType: 'Final' });
+  const [rsForm, setRsForm]                   = useState({ ongoingClassId: '', examType: 'Final', useComponents: true, hasLab: false, quizMax: 10, presentationMax: 5, assignmentMax: 5, midMax: 30, finalMax: 50 });
   const [rsEntries, setRsEntries]             = useState([]);
   const [rsError, setRsError]                 = useState('');
   const [rsSuccess, setRsSuccess]             = useState('');
   const [rsSaving, setRsSaving]               = useState(false);
   const [rsSubmitting, setRsSubmitting]       = useState(false);
+  const [rsImporting, setRsImporting]         = useState(false);
+  const rsFileInputRef                        = useRef(null);
   const [crForm, setCrForm]                   = useState({ reason: '', requestedChanges: '' });
   const [crSubmitting, setCrSubmitting]       = useState(false);
   const [crError, setCrError]                 = useState('');
@@ -239,25 +249,20 @@ export default function TeacherPortal() {
     }
     axios.get(`${API}/departments`).then(r => setDeptList(r.data)).catch(() => {});
     axios.get(`${API}/lookups/designations`).then(r => setDesignationList(r.data)).catch(() => {});
-    axios.get(`${API}/lookups/sessions`).then(r => setOcSessionList(r.data)).catch(() => {});
   }, []);
 
-  // Programs for the "Add Ongoing Class" form cascade from its selected department
+  // 'register' picks the pre-login form; any other value deep-links a
+  // notification straight into a logged-in section (see NotificationBell's
+  // openNotification() — teacher.js's post-login nav state is activeSection,
+  // not tab).
   useEffect(() => {
-    if (!ocForm.departmentId) { setOcProgramList([]); return; }
-    axios.get(`${API}/lookups/programs`, { params: { department: ocForm.departmentId } })
-      .then(r => setOcProgramList(r.data))
-      .catch(() => setOcProgramList([]));
-  }, [ocForm.departmentId]);
-
-  useEffect(() => {
-    if (router.query.tab === 'register') setTab('register');
+    if (router.query.tab === 'register') { setTab('register'); return; }
+    if (router.query.tab) setActiveSection(router.query.tab);
   }, [router.query.tab]);
 
   useEffect(() => {
     if (isLoggedIn && token) {
       if (activeSection === 'myClasses') {
-        setTaAssignments(teacher?.teachingAssignments || []);
         fetchOngoingClasses();
       }
       if (activeSection === 'attendance') { fetchOngoingClasses(); }
@@ -265,6 +270,7 @@ export default function TeacherPortal() {
       if (activeSection === 'results') { fetchResultSheets(); fetchOngoingClasses(); setRsView('list'); }
       if (activeSection === 'correctionRequests') fetchMyCrs();
       if (activeSection === 'teachingFields') fetchTeachingFields();
+      if (activeSection === 'timetable') fetchTimetable();
     }
   }, [activeSection, isLoggedIn]);
 
@@ -307,12 +313,19 @@ export default function TeacherPortal() {
     e.preventDefault();
     if (!atClassId) { setAtError('Please select a class.'); return; }
     if (!atRecords.length) { setAtError('Add at least one student.'); return; }
+    if (atIsMakeup && (!atMakeupFor || !atMakeupReason.trim())) {
+      setAtError('Make-up classes need both the missed-class date and a reason.'); return;
+    }
     setAtSaving(true); setAtError(''); setAtSuccess('');
     try {
-      await axios.post(`${API}/portal/teacher/attendance`, { ongoingClassId: atClassId, date: atDate, records: atRecords }, authHeaders());
-      setAtSuccess('Attendance saved successfully!');
+      const { data } = await axios.post(`${API}/portal/teacher/attendance`, {
+        ongoingClassId: atClassId, date: atDate, records: atRecords,
+        isMakeup: atIsMakeup, makeupFor: atIsMakeup ? atMakeupFor : undefined, makeupReason: atIsMakeup ? atMakeupReason : undefined,
+      }, authHeaders());
+      setAtSuccess(`Attendance saved successfully!${data?.notified ? ` ${data.notified} absence alert(s) sent.` : ''}`);
       setAtRecords([]);
       setAtDate(new Date().toISOString().split('T')[0]);
+      setAtIsMakeup(false); setAtMakeupFor(''); setAtMakeupReason('');
     } catch (err) { setAtError(err.response?.data?.message || 'Failed to save.'); }
     setAtSaving(false);
   };
@@ -320,10 +333,16 @@ export default function TeacherPortal() {
   const handleEditAttendanceSession = async (e) => {
     e.preventDefault();
     if (!atEditSession) return;
+    if (atEditSession.isMakeup && (!atEditSession.makeupFor || !String(atEditSession.makeupReason || '').trim())) {
+      setAtError('Make-up classes need both the missed-class date and a reason.'); return;
+    }
     setAtSaving(true); setAtError(''); setAtSuccess('');
     try {
-      await axios.patch(`${API}/portal/teacher/attendance/${atEditSession._id}`, { records: atEditSession.records, date: atEditSession.date }, authHeaders());
-      setAtSuccess('Attendance updated.');
+      const { data } = await axios.patch(`${API}/portal/teacher/attendance/${atEditSession._id}`, {
+        records: atEditSession.records, date: atEditSession.date,
+        isMakeup: atEditSession.isMakeup, makeupFor: atEditSession.makeupFor, makeupReason: atEditSession.makeupReason, kind: atEditSession.kind,
+      }, authHeaders());
+      setAtSuccess(`Attendance updated.${data?.notified ? ` ${data.notified} absence alert(s) sent.` : ''}`);
       fetchAtSessions(atClassId);
       setAtEditSession(null);
     } catch (err) { setAtError(err.response?.data?.message || 'Update failed.'); }
@@ -395,23 +414,59 @@ export default function TeacherPortal() {
     setTfDeleting(null);
   };
 
-  function rsCalcGrade(marks) {
-    const m = Number(marks) || 0;
-    if (m >= 90) return 'A+';
-    if (m >= 80) return 'A';
-    if (m >= 70) return 'B+';
-    if (m >= 60) return 'B';
-    if (m >= 50) return 'C';
-    if (m >= 40) return 'D';
-    return 'F';
+  // Live-typing preview only — the server (utils/grading.js) is the
+  // authoritative source and recomputes this on save; mirrored here so what
+  // the teacher sees while typing matches what actually gets saved, instead
+  // of a simpler scale that used to disagree with it.
+  const GRADE_SCALE = [
+    { min: 90, grade: 'A+', points: 4.00 },
+    { min: 85, grade: 'A',  points: 3.66 },
+    { min: 80, grade: 'A-', points: 3.33 },
+    { min: 75, grade: 'B+', points: 3.00 },
+    { min: 70, grade: 'B',  points: 2.66 },
+    { min: 65, grade: 'B-', points: 2.33 },
+    { min: 60, grade: 'C+', points: 2.00 },
+    { min: 55, grade: 'C',  points: 1.66 },
+    { min: 50, grade: 'C-', points: 1.33 },
+    { min: 45, grade: 'D+', points: 1.00 },
+    { min: 40, grade: 'D',  points: 0.66 },
+    { min: 0,  grade: 'F',  points: 0.00 },
+  ];
+  function rsGradeRow(marks) {
+    const pct = Math.min(100, Math.max(0, Number(marks) || 0));
+    return GRADE_SCALE.find(r => pct >= r.min) || GRADE_SCALE[GRADE_SCALE.length - 1];
+  }
+  function rsCalcGrade(marks) { return rsGradeRow(marks).grade; }
+  function rsCalcGpa(marks) { return rsGradeRow(marks).points; }
+
+  // Default component weighting for the two standard mark-sheet layouts.
+  // Lab subjects: Sessional + Lab + Mid + Final. Non-lab subjects: the
+  // "sessional" portion is broken into Quiz + Presentation + Assignment
+  // instead, plus Mid + Final.
+  function rsDefaultComponents(hasLab) {
+    return hasLab
+      ? { sessionalMax: 15, labMax: 25, midMax: 20, finalMax: 40 }
+      : { quizMax: 10, presentationMax: 5, assignmentMax: 5, midMax: 30, finalMax: 50 };
   }
 
-  function rsCalcGpa(marks) {
-    return Math.round((Number(marks) / 100) * 4 * 100) / 100;
+  function rsComponentsTotal(f) {
+    return f.hasLab
+      ? (Number(f.sessionalMax) || 0) + (Number(f.labMax) || 0) + (Number(f.midMax) || 0) + (Number(f.finalMax) || 0)
+      : (Number(f.quizMax) || 0) + (Number(f.presentationMax) || 0) + (Number(f.assignmentMax) || 0) + (Number(f.midMax) || 0) + (Number(f.finalMax) || 0);
+  }
+
+  function rsEntryTotal(e, f) {
+    return f.hasLab
+      ? (Number(e.sessionalMarks) || 0) + (Number(e.labMarks) || 0) + (Number(e.midMarks) || 0) + (Number(e.finalMarks) || 0)
+      : (Number(e.quizMarks) || 0) + (Number(e.presentationMarks) || 0) + (Number(e.assignmentMarks) || 0) + (Number(e.midMarks) || 0) + (Number(e.finalMarks) || 0);
   }
 
   function emptyRsEntry() {
-    return { registrationNo: '', studentName: '', fatherName: '', obtainedMarks: '', remarks: '' };
+    return {
+      registrationNo: '', studentName: '', fatherName: '',
+      sessionalMarks: '', labMarks: '', quizMarks: '', presentationMarks: '', assignmentMarks: '', midMarks: '', finalMarks: '',
+      obtainedMarks: '', remarks: '',
+    };
   }
 
   function updateRsEntry(idx, field, value) {
@@ -423,7 +478,7 @@ export default function TeacherPortal() {
 
   function openNewRsForm() {
     setRsEditing(null);
-    setRsForm({ ongoingClassId: '', examType: 'Final' });
+    setRsForm({ ongoingClassId: '', examType: 'Final', useComponents: true, hasLab: false, ...rsDefaultComponents(false) });
     setRsEntries([emptyRsEntry()]);
     setRsError(''); setRsSuccess('');
     setRsView('form');
@@ -431,11 +486,37 @@ export default function TeacherPortal() {
 
   function openEditRsForm(sheet) {
     setRsEditing(sheet);
+    // Drafts saved before this feature (or imported without a breakdown) have
+    // no markComponents — those keep editing in the original single-total
+    // mode instead of showing blank breakdown columns for marks that were
+    // never split out.
+    const useComponents = !!(sheet.markComponents && (sheet.markComponents.sessionalMax != null || sheet.markComponents.quizMax != null));
+    const hasLab = !!sheet.hasLab;
+    const dc = rsDefaultComponents(hasLab);
     setRsForm({
       ongoingClassId: sheet.ongoingClassId || '',
       examType: sheet.examType || 'Final',
+      useComponents,
+      hasLab,
+      sessionalMax:    sheet.markComponents?.sessionalMax    ?? dc.sessionalMax,
+      labMax:          sheet.markComponents?.labMax          ?? dc.labMax,
+      quizMax:         sheet.markComponents?.quizMax         ?? dc.quizMax,
+      presentationMax: sheet.markComponents?.presentationMax ?? dc.presentationMax,
+      assignmentMax:   sheet.markComponents?.assignmentMax   ?? dc.assignmentMax,
+      midMax:          sheet.markComponents?.midMax          ?? dc.midMax,
+      finalMax:        sheet.markComponents?.finalMax        ?? dc.finalMax,
     });
-    setRsEntries(sheet.entries?.length ? sheet.entries.map(e => ({ ...e, obtainedMarks: String(e.obtainedMarks) })) : [emptyRsEntry()]);
+    setRsEntries(sheet.entries?.length ? sheet.entries.map(e => ({
+      ...e,
+      obtainedMarks:     String(e.obtainedMarks),
+      sessionalMarks:    e.sessionalMarks    != null ? String(e.sessionalMarks)    : '',
+      labMarks:          e.labMarks          != null ? String(e.labMarks)          : '',
+      quizMarks:         e.quizMarks         != null ? String(e.quizMarks)         : '',
+      presentationMarks: e.presentationMarks != null ? String(e.presentationMarks) : '',
+      assignmentMarks:   e.assignmentMarks   != null ? String(e.assignmentMarks)   : '',
+      midMarks:          e.midMarks          != null ? String(e.midMarks)          : '',
+      finalMarks:        e.finalMarks        != null ? String(e.finalMarks)        : '',
+    })) : [emptyRsEntry()]);
     setRsError(''); setRsSuccess('');
     setRsView('form');
   }
@@ -452,12 +533,43 @@ export default function TeacherPortal() {
     e.preventDefault();
     if (!rsForm.ongoingClassId && !rsEditing) { setRsError('Please select a class.'); return; }
     if (!rsEntries.length) { setRsError('Add at least one student entry.'); return; }
+    if (rsForm.useComponents && rsComponentsTotal(rsForm) !== 100) {
+      setRsError(`${rsForm.hasLab ? 'Sessional + Lab + Mid + Final' : 'Quiz + Presentation + Assignment + Mid + Final'} must add up to 100 (currently ${rsComponentsTotal(rsForm)}).`);
+      return;
+    }
     setRsError(''); setRsSuccess(''); setRsSaving(true);
     try {
+      const markComponents = rsForm.useComponents
+        ? (rsForm.hasLab ? {
+            sessionalMax: Number(rsForm.sessionalMax) || 0,
+            labMax: Number(rsForm.labMax) || 0,
+            midMax: Number(rsForm.midMax) || 0,
+            finalMax: Number(rsForm.finalMax) || 0,
+          } : {
+            quizMax: Number(rsForm.quizMax) || 0,
+            presentationMax: Number(rsForm.presentationMax) || 0,
+            assignmentMax: Number(rsForm.assignmentMax) || 0,
+            midMax: Number(rsForm.midMax) || 0,
+            finalMax: Number(rsForm.finalMax) || 0,
+          })
+        : undefined;
       const payload = {
         ongoingClassId: rsForm.ongoingClassId,
         examType: rsForm.examType,
-        entries: rsEntries.map(e => ({ ...e, obtainedMarks: Number(e.obtainedMarks) || 0 })),
+        hasLab: rsForm.useComponents ? rsForm.hasLab : undefined,
+        markComponents,
+        entries: rsEntries.map(e => {
+          if (!rsForm.useComponents) return { ...e, obtainedMarks: Number(e.obtainedMarks) || 0 };
+          return rsForm.hasLab ? {
+            registrationNo: e.registrationNo, studentName: e.studentName, fatherName: e.fatherName,
+            sessionalMarks: e.sessionalMarks, labMarks: e.labMarks,
+            midMarks: e.midMarks, finalMarks: e.finalMarks, remarks: e.remarks,
+          } : {
+            registrationNo: e.registrationNo, studentName: e.studentName, fatherName: e.fatherName,
+            quizMarks: e.quizMarks, presentationMarks: e.presentationMarks, assignmentMarks: e.assignmentMarks,
+            midMarks: e.midMarks, finalMarks: e.finalMarks, remarks: e.remarks,
+          };
+        }),
       };
       let saved;
       if (rsEditing) {
@@ -474,6 +586,68 @@ export default function TeacherPortal() {
       setRsError(formatApiError(err, 'Failed to save result sheet.'));
     }
     setRsSaving(false);
+  }
+
+  function rsTemplateParams() {
+    const params = { ongoingClassId: rsForm.ongoingClassId, examType: rsForm.examType, hasLab: rsForm.hasLab };
+    if (rsForm.hasLab) {
+      params.sessionalMax = rsForm.sessionalMax;
+      params.labMax = rsForm.labMax;
+    } else {
+      params.quizMax = rsForm.quizMax;
+      params.presentationMax = rsForm.presentationMax;
+      params.assignmentMax = rsForm.assignmentMax;
+    }
+    params.midMax = rsForm.midMax;
+    params.finalMax = rsForm.finalMax;
+    return params;
+  }
+
+  async function handleDownloadTemplate() {
+    if (!rsForm.ongoingClassId) { setRsError('Please select a class first.'); return; }
+    setRsError('');
+    try {
+      const res = await axios.get(`${API}/portal/teacher/result-sheets/template`, {
+        ...authHeaders(), params: rsTemplateParams(), responseType: 'blob',
+      });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'ResultSheet_Template.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      setRsError('Failed to download template.');
+    }
+  }
+
+  async function handleImportExcel(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!rsForm.ongoingClassId) {
+      setRsError('Please select a class first.');
+      if (rsFileInputRef.current) rsFileInputRef.current.value = '';
+      return;
+    }
+    setRsError(''); setRsSuccess(''); setRsImporting(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const params = rsTemplateParams();
+      Object.entries(params).forEach(([k, v]) => fd.append(k, v));
+      const res = await axios.post(`${API}/portal/teacher/result-sheets/import`, fd, {
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' },
+      });
+      openEditRsForm(res.data.sheet);
+      setRsSuccess(res.data.message || 'Imported successfully. Review the entries below, then save or submit.');
+      fetchResultSheets();
+    } catch (err) {
+      setRsError(formatApiError(err, 'Failed to import Excel file.'));
+    }
+    setRsImporting(false);
+    if (rsFileInputRef.current) rsFileInputRef.current.value = '';
   }
 
   async function handleSubmitResultSheet() {
@@ -532,9 +706,14 @@ export default function TeacherPortal() {
     setLoginLoading(false);
   };
 
+  const regInputCls = (field) => regFieldErrors[field]
+    ? inputCls.replace('border-gray-300', 'border-red-400') + ' focus:border-red-500'
+    : inputCls;
+
   const handleRegister = async (e) => {
     e.preventDefault();
     setRegError('');
+    setRegFieldErrors({});
     setRegSuccess('');
     if (regData.password.length < 8) return setRegError('Password must be at least 8 characters.');
     setRegLoading(true);
@@ -544,6 +723,7 @@ export default function TeacherPortal() {
       setRegData({ teacherId: '', fullName: '', email: '', password: '', phone: '', cnic: '', departmentId: '', qualification: '', designationId: '', classesTaught: '' });
     } catch (err) {
       setRegError(err.response?.data?.message || 'Registration failed. Please try again.');
+      setRegFieldErrors(err.response?.data?.errors || {});
     }
     setRegLoading(false);
   };
@@ -582,72 +762,14 @@ export default function TeacherPortal() {
     setOcLoading(false);
   };
 
-  const handleAddOcClass = async (e) => {
-    e.preventDefault();
-    setOcSaving(true);
-    setOcError('');
+  const fetchTimetable = async () => {
+    setTimetableLoading(true);
     try {
-      await axios.post(`${API}/portal/teacher/ongoing-classes`, ocForm, authHeaders());
-      setOcForm(ocEmptyForm);
-      setOcShowForm(false);
-      fetchOngoingClasses();
-    } catch (err) {
-      setOcError(err.response?.data?.message || 'Failed to add class.');
-    }
-    setOcSaving(false);
+      const { data } = await axios.get(`${API}/portal/teacher/timetable`, authHeaders());
+      setTimetable(data);
+    } catch { setTimetable({ grid: { days: [], byDay: {} } }); }
+    setTimetableLoading(false);
   };
-
-  const handleEditOcClass = async (e) => {
-    e.preventDefault();
-    setOcEditSaving(true);
-    try {
-      await axios.patch(`${API}/portal/teacher/ongoing-classes/${ocEditId}`, ocEditForm, authHeaders());
-      setOcEditId(null);
-      setOcEditForm({});
-      fetchOngoingClasses();
-    } catch (err) {
-      alert(err.response?.data?.message || 'Failed to save changes.');
-    }
-    setOcEditSaving(false);
-  };
-
-  const handleDeleteOcClass = async (id) => {
-    try {
-      await axios.delete(`${API}/portal/teacher/ongoing-classes/${id}`, authHeaders());
-      setOcDeleting(null);
-      fetchOngoingClasses();
-    } catch (err) {
-      alert(err.response?.data?.message || 'Failed to delete class.');
-      setOcDeleting(null);
-    }
-  };
-
-  const saveAssignments = async (newList) => {
-    setTaSaving(true);
-    setTaError('');
-    try {
-      const res = await axios.patch(`${API}/portal/teacher/teaching-assignments`, { teachingAssignments: newList }, authHeaders());
-      const updatedTeacher = res.data.teacher;
-      setTeacher(updatedTeacher);
-      localStorage.setItem('teacherData', JSON.stringify(updatedTeacher));
-      setTaAssignments(updatedTeacher.teachingAssignments || []);
-    } catch (err) {
-      setTaError(err.response?.data?.message || 'Save failed.');
-    }
-    setTaSaving(false);
-  };
-
-  const handleAddAssignment = async (e) => {
-    e.preventDefault();
-    const entry = { department: taForm.department, session: taForm.session, weeklyHours: taForm.weeklyHours ? Number(taForm.weeklyHours) : undefined, academicSession: taForm.academicSession || undefined };
-    await saveAssignments([...taAssignments, entry]);
-    setTaForm({ department: '', session: '', weeklyHours: '', academicSession: '' });
-  };
-
-  const handleRemoveTaAssignment = (index) => {
-    saveAssignments(taAssignments.filter((_, i) => i !== index));
-  };
-
 
   const handleUploadResults = async (e) => {
     e.preventDefault();
@@ -877,6 +999,7 @@ export default function TeacherPortal() {
                 { id: 'profile', label: '👤 Profile' },
                 { id: 'teachingFields', label: '🎓 Teaching Fields' },
                 { id: 'myClasses', label: '📚 My Classes' },
+                { id: 'timetable', label: '🗓️ Timetable' },
                 { id: 'attendance', label: '✅ Attendance' },
                 { id: 'results', label: '📝 Mark Sheets' },
                 { id: 'correctionRequests', label: '🔄 Correction Requests' },
@@ -902,17 +1025,56 @@ export default function TeacherPortal() {
 
           {/* Main Content */}
           <main className="flex-1 p-4 lg:p-8 overflow-auto min-w-0">
-            {/* Mobile menu button */}
-            <button
-              className="lg:hidden mb-4 flex items-center gap-2 px-3 py-2 bg-white rounded-lg shadow text-sm font-medium text-gray-700 border border-gray-200"
-              onClick={() => setSidebarOpen(true)}
-            >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-              Menu
-            </button>
+            {/* Mobile menu button + notification bell */}
+            <div className="flex items-center justify-between mb-4">
+              <button
+                className="lg:hidden flex items-center gap-2 px-3 py-2 bg-white rounded-lg shadow text-sm font-medium text-gray-700 border border-gray-200"
+                onClick={() => setSidebarOpen(true)}
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+                Menu
+              </button>
+              <div className="ml-auto">
+                <NotificationBell api={API} token={token} role="teacher" />
+              </div>
+            </div>
             <h1 className="text-2xl font-bold text-[#FA7902] mb-6">Dashboard</h1>
+
+            {/* Timetable */}
+            {activeSection === 'timetable' && (
+              <div>
+                <div className="flex flex-wrap items-center justify-between gap-3 mb-6 no-print-tt">
+                  <p className="text-gray-500 text-sm">Your weekly teaching schedule.</p>
+                  {timetable.slots?.length > 0 && (
+                    <button onClick={() => window.print()} className="px-4 py-2.5 min-h-11 text-sm font-semibold rounded-xl text-white bg-[#FA7902] hover:opacity-90">
+                      🖨 Print / Save PDF
+                    </button>
+                  )}
+                </div>
+                <div className="no-print-tt-header" style={{ display: 'none', marginBottom: '14px', borderBottom: '2px solid #FA7902', paddingBottom: '8px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#041476' }}>University of Makran, Panjgur</div>
+                  <div style={{ fontSize: '12px', color: '#FA7902', fontWeight: 600, marginTop: '4px' }}>Timetable — {teacher.fullName} ({teacher.teacherId})</div>
+                </div>
+                <div id="teacher-timetable-printable">
+                  <TimetableGrid grid={timetable.grid} loading={timetableLoading} emptyLabel="No timetable slots have been scheduled for you yet." />
+                  <div className="no-print-tt-footer" style={{ display: 'none', marginTop: '16px', borderTop: '1px solid #ccc', paddingTop: '8px', textAlign: 'right', fontSize: '10px', color: '#555' }}>
+                    Generated on {new Date().toLocaleDateString('en-GB')}
+                  </div>
+                </div>
+                <style>{`
+                  @media print {
+                    @page { size: A4 landscape; margin: 10mm; }
+                    body * { visibility: hidden; }
+                    #teacher-timetable-printable, #teacher-timetable-printable *, .no-print-tt-header, .no-print-tt-header * { visibility: visible; }
+                    .no-print-tt-header, .no-print-tt-footer { display: block !important; }
+                    #teacher-timetable-printable { position: absolute; top: 70px; left: 0; width: 100%; }
+                    .no-print-tt { display: none !important; }
+                  }
+                `}</style>
+              </div>
+            )}
 
             {/* Profile */}
             {activeSection === 'profile' && (
@@ -1072,145 +1234,36 @@ export default function TeacherPortal() {
             {/* My Classes */}
             {activeSection === 'myClasses' && (
               <div className="space-y-6">
-                {/* Ongoing Classes */}
+                {/* Ongoing Classes — assigned by HOD, read-only here */}
                 <div className="bg-white rounded-xl shadow p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-xl font-bold text-[#FA7902]">My Ongoing Classes</h2>
-                    <button
-                      onClick={() => setOcShowForm(v => !v)}
-                      className="px-4 py-2 rounded-lg text-white font-semibold text-sm hover:opacity-90"
-                      style={{background: ocShowForm ? '#6b7280' : '#FA7902'}}>
-                      {ocShowForm ? 'Close Form' : '+ Add Class'}
-                    </button>
+                  <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
+                    <h2 className="text-xl font-bold text-[#FA7902]">My Assigned Classes</h2>
+                    {(() => {
+                      const activeCount = ocClasses.filter(c => c.status === 'active').length;
+                      const cap = teacher.extraSubjectAllowed ? 5 : 4;
+                      return (
+                        <span className={`px-3 py-1 rounded-full text-xs font-bold ${activeCount >= cap ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-[#FA7902]'}`}>
+                          {activeCount} / {cap} subjects
+                        </span>
+                      );
+                    })()}
                   </div>
-                  {ocError && <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded text-red-700 text-sm">{ocError}</div>}
-
-                  {/* Add Form */}
-                  {ocShowForm && (
-                    <div className="bg-orange-50 border border-orange-200 rounded-xl p-5 mb-5">
-                      <h3 className="font-bold text-gray-700 text-sm mb-3">Add New Class</h3>
-                      <form onSubmit={handleAddOcClass} className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <div>
-                          <label className={labelCls}>Class Name *</label>
-                          <input type="text" required value={ocForm.className}
-                            onChange={(e) => setOcForm(f => ({...f, className: e.target.value}))}
-                            className={inputCls} placeholder="e.g. BSCS-3A" />
-                        </div>
-                        <div>
-                          <label className={labelCls}>Subject *</label>
-                          <input type="text" required value={ocForm.subject}
-                            onChange={(e) => setOcForm(f => ({...f, subject: e.target.value}))}
-                            className={inputCls} placeholder="e.g. Data Structures" />
-                        </div>
-                        <div>
-                          <label className={labelCls}>Department *</label>
-                          <select required value={ocForm.departmentId}
-                            onChange={(e) => setOcForm(f => ({...f, departmentId: e.target.value, programId: ''}))}
-                            className={inputCls}>
-                            <option value="">Select</option>
-                            {deptList.map((d) => <option key={d._id} value={d._id}>{d.name}</option>)}
-                          </select>
-                        </div>
-                        <div>
-                          <label className={labelCls}>Program</label>
-                          <select value={ocForm.programId} disabled={!ocForm.departmentId}
-                            onChange={(e) => setOcForm(f => ({...f, programId: e.target.value}))}
-                            className={inputCls}>
-                            <option value="">{ocForm.departmentId ? 'Select' : 'Select a department first'}</option>
-                            {ocProgramList.map((p) => <option key={p._id} value={p._id}>{p.title}</option>)}
-                          </select>
-                        </div>
-                        <div>
-                          <label className={labelCls}>Semester</label>
-                          <select value={ocForm.semester} onChange={(e) => setOcForm(f => ({...f, semester: e.target.value}))} className={inputCls}>
-                            <option value="">Select</option>
-                            {[1,2,3,4,5,6,7,8,9,10].map((n) => <option key={n} value={`Semester ${n}`}>Semester {n}</option>)}
-                          </select>
-                        </div>
-                        <div>
-                          <label className={labelCls}>Academic Session</label>
-                          <select value={ocForm.sessionId} onChange={(e) => setOcForm(f => ({...f, sessionId: e.target.value}))} className={inputCls}>
-                            <option value="">Select</option>
-                            {ocSessionList.map((s) => <option key={s._id} value={s._id}>{s.name}</option>)}
-                          </select>
-                        </div>
-                        <div>
-                          <label className={labelCls}>Time Session</label>
-                          <select value={ocForm.timeSession} onChange={(e) => setOcForm(f => ({...f, timeSession: e.target.value}))} className={inputCls}>
-                            <option value="">Select</option><option>Morning</option><option>Evening</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label className={labelCls}>Start Time</label>
-                          <input type="time" value={ocForm.startTime} onChange={(e) => setOcForm(f => ({...f, startTime: e.target.value}))} className={inputCls} />
-                        </div>
-                        <div>
-                          <label className={labelCls}>End Time</label>
-                          <input type="time" value={ocForm.endTime} onChange={(e) => setOcForm(f => ({...f, endTime: e.target.value}))} className={inputCls} />
-                        </div>
-                        <div>
-                          <label className={labelCls}>Room</label>
-                          <input type="text" value={ocForm.room} onChange={(e) => setOcForm(f => ({...f, room: e.target.value}))} className={inputCls} placeholder="e.g. Room 101" />
-                        </div>
-                        <div>
-                          <label className={labelCls}>Location / Block</label>
-                          <input type="text" value={ocForm.location} onChange={(e) => setOcForm(f => ({...f, location: e.target.value}))} className={inputCls} placeholder="e.g. CS Block" />
-                        </div>
-                        <div>
-                          <label className={labelCls}>Weekly Hours</label>
-                          <input type="number" min="1" max="40" value={ocForm.weeklyHours} onChange={(e) => setOcForm(f => ({...f, weeklyHours: e.target.value}))} className={inputCls} />
-                        </div>
-                        <div className="md:col-span-2">
-                          <label className={labelCls}>Days</label>
-                          <div className="flex flex-wrap gap-2 mt-1">
-                            {['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map((day) => (
-                              <label key={day} className="flex items-center gap-1.5 text-sm cursor-pointer">
-                                <input type="checkbox" checked={ocForm.days.includes(day)}
-                                  onChange={(e) => setOcForm(f => ({...f, days: e.target.checked ? [...f.days, day] : f.days.filter(d => d !== day)}))}
-                                  className="accent-orange-500" />
-                                {day.slice(0, 3)}
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-                        <div className="md:col-span-2">
-                          <button type="submit" disabled={ocSaving}
-                            className="bg-[#FA7902] text-white px-6 py-2 rounded-lg text-sm font-semibold hover:opacity-90 transition">
-                            {ocSaving ? 'Saving...' : '+ Add Class'}
-                          </button>
-                        </div>
-                      </form>
-                    </div>
-                  )}
+                  <p className="text-xs text-gray-400 mb-4">
+                    Classes and subjects are assigned by your Head of Department. Contact your HOD to have a class added, changed, or removed.
+                  </p>
 
                   {/* Class List */}
                   {ocLoading ? (
                     <p className="text-gray-500 text-sm">Loading...</p>
                   ) : ocClasses.length === 0 ? (
-                    <p className="text-gray-500 text-sm">No ongoing classes added yet.</p>
+                    <p className="text-gray-500 text-sm">No classes assigned yet. Your HOD will assign subjects here.</p>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       {ocClasses.map((c) => (
                         <div key={c._id} className="border rounded-xl p-4" style={{borderLeft: '4px solid #FA7902'}}>
-                          <div className="flex items-start justify-between gap-2">
-                            <div>
-                              <p className="font-bold text-gray-800 text-sm">{c.className}</p>
-                              <p className="text-gray-600 text-xs">{c.subject}</p>
-                              {c.department && <p className="text-gray-400 text-xs mt-0.5">{c.department}{c.program ? ` · ${c.program}` : ''}</p>}
-                            </div>
-                            <div className="flex gap-1 flex-shrink-0">
-                              <button
-                                onClick={() => { setOcEditId(c._id); setOcEditForm({ className: c.className, subject: c.subject, department: c.department, program: c.program||'', semester: c.semester||'', academicSession: c.academicSession||'', timeSession: c.timeSession||'', days: c.days||[], startTime: c.startTime||'', endTime: c.endTime||'', room: c.room||'', location: c.location||'', weeklyHours: c.weeklyHours||'', maxStudents: c.maxStudents||'', status: c.status }); }}
-                                className="px-2 py-1 rounded text-xs font-semibold bg-blue-100 text-blue-700 hover:bg-blue-200">
-                                Edit
-                              </button>
-                              <button
-                                onClick={() => setOcDeleting(c)}
-                                className="px-2 py-1 rounded text-xs font-semibold bg-red-100 text-red-700 hover:bg-red-200">
-                                Del
-                              </button>
-                            </div>
-                          </div>
+                          <p className="font-bold text-gray-800 text-sm">{c.className}</p>
+                          <p className="text-gray-600 text-xs">{c.subject}</p>
+                          {c.department && <p className="text-gray-400 text-xs mt-0.5">{c.department}{c.program ? ` · ${c.program}` : ''}</p>}
                           <div className="flex flex-wrap gap-1.5 mt-2">
                             <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${c.status === 'active' ? 'bg-green-100 text-green-700' : c.status === 'completed' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{c.status}</span>
                             {c.timeSession && <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${c.timeSession === 'Morning' ? 'bg-yellow-100 text-yellow-700' : 'bg-indigo-100 text-indigo-700'}`}>{c.timeSession}</span>}
@@ -1222,111 +1275,6 @@ export default function TeacherPortal() {
                           )}
                         </div>
                       ))}
-                    </div>
-                  )}
-
-                  {/* Edit Modal */}
-                  {ocEditId && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 overflow-y-auto">
-                      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-6 mx-4 my-6">
-                        <h3 className="text-lg font-bold mb-4 text-[#041476]">Edit Class</h3>
-                        <form onSubmit={handleEditOcClass} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <div>
-                            <label className={labelCls}>Class Name</label>
-                            <input type="text" value={ocEditForm.className||''} onChange={(e) => setOcEditForm(f => ({...f, className: e.target.value}))} className={inputCls} />
-                          </div>
-                          <div>
-                            <label className={labelCls}>Subject</label>
-                            <input type="text" value={ocEditForm.subject||''} onChange={(e) => setOcEditForm(f => ({...f, subject: e.target.value}))} className={inputCls} />
-                          </div>
-                          <div>
-                            <label className={labelCls}>Department</label>
-                            <select value={ocEditForm.department||''} onChange={(e) => setOcEditForm(f => ({...f, department: e.target.value}))} className={inputCls}>
-                              <option value="">Select</option>
-                              {deptList.map((d) => <option key={d.name}>{d.name}</option>)}
-                            </select>
-                          </div>
-                          <div>
-                            <label className={labelCls}>Program</label>
-                            <input type="text" value={ocEditForm.program||''} onChange={(e) => setOcEditForm(f => ({...f, program: e.target.value}))} className={inputCls} />
-                          </div>
-                          <div>
-                            <label className={labelCls}>Semester</label>
-                            <select value={ocEditForm.semester||''} onChange={(e) => setOcEditForm(f => ({...f, semester: e.target.value}))} className={inputCls}>
-                              <option value="">Select</option>
-                              {[1,2,3,4,5,6,7,8,9,10].map((n) => <option key={n} value={`Semester ${n}`}>Semester {n}</option>)}
-                            </select>
-                          </div>
-                          <div>
-                            <label className={labelCls}>Academic Session</label>
-                            <input type="text" value={ocEditForm.academicSession||''} onChange={(e) => setOcEditForm(f => ({...f, academicSession: e.target.value}))} className={inputCls} />
-                          </div>
-                          <div>
-                            <label className={labelCls}>Time Session</label>
-                            <select value={ocEditForm.timeSession||''} onChange={(e) => setOcEditForm(f => ({...f, timeSession: e.target.value}))} className={inputCls}>
-                              <option value="">Select</option><option>Morning</option><option>Evening</option>
-                            </select>
-                          </div>
-                          <div>
-                            <label className={labelCls}>Start Time</label>
-                            <input type="time" value={ocEditForm.startTime||''} onChange={(e) => setOcEditForm(f => ({...f, startTime: e.target.value}))} className={inputCls} />
-                          </div>
-                          <div>
-                            <label className={labelCls}>End Time</label>
-                            <input type="time" value={ocEditForm.endTime||''} onChange={(e) => setOcEditForm(f => ({...f, endTime: e.target.value}))} className={inputCls} />
-                          </div>
-                          <div>
-                            <label className={labelCls}>Room</label>
-                            <input type="text" value={ocEditForm.room||''} onChange={(e) => setOcEditForm(f => ({...f, room: e.target.value}))} className={inputCls} />
-                          </div>
-                          <div>
-                            <label className={labelCls}>Status</label>
-                            <select value={ocEditForm.status||'active'} onChange={(e) => setOcEditForm(f => ({...f, status: e.target.value}))} className={inputCls}>
-                              <option value="active">Active</option>
-                              <option value="completed">Completed</option>
-                              <option value="cancelled">Cancelled</option>
-                              <option value="on-hold">On Hold</option>
-                            </select>
-                          </div>
-                          <div className="col-span-2">
-                            <label className={labelCls}>Days</label>
-                            <div className="flex flex-wrap gap-2 mt-1">
-                              {['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map((day) => (
-                                <label key={day} className="flex items-center gap-1.5 text-sm cursor-pointer">
-                                  <input type="checkbox" checked={(ocEditForm.days||[]).includes(day)}
-                                    onChange={(e) => setOcEditForm(f => ({...f, days: e.target.checked ? [...(f.days||[]), day] : (f.days||[]).filter(d => d !== day)}))}
-                                    className="accent-orange-500" />
-                                  {day.slice(0, 3)}
-                                </label>
-                              ))}
-                            </div>
-                          </div>
-                          <div className="col-span-2 flex gap-3 pt-2">
-                            <button type="submit" disabled={ocEditSaving}
-                              className="flex-1 py-2 text-white rounded-lg font-semibold hover:opacity-90 text-sm" style={{background:'#041476'}}>
-                              {ocEditSaving ? 'Saving...' : 'Save Changes'}
-                            </button>
-                            <button type="button" onClick={() => { setOcEditId(null); setOcEditForm({}); }}
-                              className="flex-1 py-2 border border-gray-300 rounded-lg font-semibold text-gray-700 hover:bg-gray-50 text-sm">
-                              Cancel
-                            </button>
-                          </div>
-                        </form>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Delete Confirm */}
-                  {ocDeleting && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-                      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 mx-4 text-center">
-                        <h3 className="text-lg font-bold text-gray-800 mb-2">Delete Class?</h3>
-                        <p className="text-sm text-gray-500 mb-4"><span className="font-semibold">{ocDeleting.className}</span> — {ocDeleting.subject}</p>
-                        <div className="flex gap-3">
-                          <button onClick={() => handleDeleteOcClass(ocDeleting._id)} className="flex-1 py-2 text-white rounded-lg font-semibold bg-red-600 text-sm">Delete</button>
-                          <button onClick={() => setOcDeleting(null)} className="flex-1 py-2 border border-gray-300 rounded-lg font-semibold text-gray-700 text-sm">Cancel</button>
-                        </div>
-                      </div>
                     </div>
                   )}
                 </div>
@@ -1398,6 +1346,33 @@ export default function TeacherPortal() {
                             max={new Date().toISOString().split('T')[0]}
                             className={inputCls} required />
                         </div>
+                      </div>
+
+                      {/* Make-up class */}
+                      <div className="border border-gray-200 rounded-xl p-4 bg-gray-50">
+                        <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 cursor-pointer">
+                          <input type="checkbox" checked={atIsMakeup}
+                            onChange={e => { setAtIsMakeup(e.target.checked); if (!e.target.checked) { setAtMakeupFor(''); setAtMakeupReason(''); } }}
+                            className="w-4 h-4 accent-[#FA7902]" />
+                          This is a make-up class
+                        </label>
+                        {atIsMakeup && (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
+                            <div>
+                              <label className={labelCls}>Missed class date *</label>
+                              <input type="date" value={atMakeupFor} onChange={e => setAtMakeupFor(e.target.value)}
+                                max={new Date().toISOString().split('T')[0]}
+                                className={inputCls} required={atIsMakeup} />
+                              <p className="text-xs text-gray-400 mt-1">Must be within the last 60 days.</p>
+                            </div>
+                            <div>
+                              <label className={labelCls}>Reason *</label>
+                              <input value={atMakeupReason} onChange={e => setAtMakeupReason(e.target.value)}
+                                maxLength={500} placeholder="e.g. Class cancelled due to public holiday"
+                                className={inputCls} required={atIsMakeup} />
+                            </div>
+                          </div>
+                        )}
                       </div>
 
                       {/* Student rows */}
@@ -1508,6 +1483,9 @@ export default function TeacherPortal() {
                                   <div>
                                     <p className="font-semibold text-gray-800 text-sm">{new Date(s.date).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</p>
                                     <p className="text-xs text-gray-500 mt-0.5">{total} students · {present} present · {total - present} absent</p>
+                                    {formatMakeupLabel(s) && (
+                                      <p className="text-xs font-semibold text-indigo-600 mt-1">🔁 {formatMakeupLabel(s)}</p>
+                                    )}
                                   </div>
                                   <div className="flex gap-2">
                                     <button onClick={() => setAtEditSession({ ...s, records: s.records.map(r => ({ ...r })) })}
@@ -1539,6 +1517,31 @@ export default function TeacherPortal() {
                             onChange={e => setAtEditSession(p => ({ ...p, date: e.target.value }))}
                             max={new Date().toISOString().split('T')[0]}
                             className={`${inputCls} max-w-xs`} />
+                        </div>
+                        <div className="mb-4 border border-gray-200 rounded-xl p-4 bg-gray-50">
+                          <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 cursor-pointer">
+                            <input type="checkbox" checked={!!atEditSession.isMakeup}
+                              onChange={e => setAtEditSession(p => ({ ...p, isMakeup: e.target.checked, ...(e.target.checked ? {} : { makeupFor: '', makeupReason: '' }) }))}
+                              className="w-4 h-4 accent-[#FA7902]" />
+                            This is a make-up class
+                          </label>
+                          {atEditSession.isMakeup && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
+                              <div>
+                                <label className={labelCls}>Missed class date *</label>
+                                <input type="date" value={atEditSession.makeupFor?.split?.('T')[0] || atEditSession.makeupFor || ''}
+                                  onChange={e => setAtEditSession(p => ({ ...p, makeupFor: e.target.value }))}
+                                  max={new Date().toISOString().split('T')[0]}
+                                  className={inputCls} required />
+                              </div>
+                              <div>
+                                <label className={labelCls}>Reason *</label>
+                                <input value={atEditSession.makeupReason || ''}
+                                  onChange={e => setAtEditSession(p => ({ ...p, makeupReason: e.target.value }))}
+                                  maxLength={500} className={inputCls} required />
+                              </div>
+                            </div>
+                          )}
                         </div>
                         <form onSubmit={handleEditAttendanceSession} className="space-y-4">
                           <div className="overflow-x-auto">
@@ -2569,7 +2572,9 @@ export default function TeacherPortal() {
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <div>
                         <h2 className="text-2xl font-bold text-[#FA7902]">{rsEditing ? 'Edit Mark Sheet' : 'New Mark Sheet'}</h2>
-                        <p className="text-gray-500 text-xs mt-0.5">Enter obtained marks for your subject (0–100). GPA and grade are auto-calculated.</p>
+                        <p className="text-gray-500 text-xs mt-0.5">
+                          {rsForm.useComponents ? 'Enter Sessional / Mid / Final marks per student — Total, GPA and grade are auto-calculated.' : 'Enter obtained marks for your subject (0–100). GPA and grade are auto-calculated.'}
+                        </p>
                       </div>
                       <button onClick={() => setRsView('list')}
                         className="shrink-0 px-4 py-2 min-h-11 rounded-lg border border-gray-300 text-gray-600 text-sm font-semibold hover:bg-gray-50 transition">
@@ -2642,6 +2647,81 @@ export default function TeacherPortal() {
                             </div>
                           </div>
                         </div>
+
+                        {rsForm.useComponents && (
+                          <div className="mt-4 pt-4 border-t border-gray-100">
+                            <label className="flex items-center gap-2 text-sm font-semibold text-gray-700 cursor-pointer mb-3">
+                              <input type="checkbox" checked={rsForm.hasLab}
+                                onChange={ev => { const hasLab = ev.target.checked; setRsForm(f => ({ ...f, hasLab, ...rsDefaultComponents(hasLab) })); }}
+                                className="accent-[#FA7902]" />
+                              This subject has a Lab component
+                            </label>
+                            <div className={`grid grid-cols-2 ${rsForm.hasLab ? 'md:grid-cols-4' : 'md:grid-cols-5'} gap-3`}>
+                              {rsForm.hasLab ? (
+                                <>
+                                  <div>
+                                    <label className={labelCls}>Sessional Max</label>
+                                    <input type="number" min="0" max="100" value={rsForm.sessionalMax}
+                                      onChange={ev => setRsForm(f => ({ ...f, sessionalMax: ev.target.value }))} className={inputCls} />
+                                  </div>
+                                  <div>
+                                    <label className={labelCls}>Lab Max</label>
+                                    <input type="number" min="0" max="100" value={rsForm.labMax}
+                                      onChange={ev => setRsForm(f => ({ ...f, labMax: ev.target.value }))} className={inputCls} />
+                                  </div>
+                                </>
+                              ) : (
+                                <>
+                                  <div>
+                                    <label className={labelCls}>Quiz Max</label>
+                                    <input type="number" min="0" max="100" value={rsForm.quizMax}
+                                      onChange={ev => setRsForm(f => ({ ...f, quizMax: ev.target.value }))} className={inputCls} />
+                                  </div>
+                                  <div>
+                                    <label className={labelCls}>Presentation Max</label>
+                                    <input type="number" min="0" max="100" value={rsForm.presentationMax}
+                                      onChange={ev => setRsForm(f => ({ ...f, presentationMax: ev.target.value }))} className={inputCls} />
+                                  </div>
+                                  <div>
+                                    <label className={labelCls}>Assignment Max</label>
+                                    <input type="number" min="0" max="100" value={rsForm.assignmentMax}
+                                      onChange={ev => setRsForm(f => ({ ...f, assignmentMax: ev.target.value }))} className={inputCls} />
+                                  </div>
+                                </>
+                              )}
+                              <div>
+                                <label className={labelCls}>Mid Max</label>
+                                <input type="number" min="0" max="100" value={rsForm.midMax}
+                                  onChange={ev => setRsForm(f => ({ ...f, midMax: ev.target.value }))} className={inputCls} />
+                              </div>
+                              <div>
+                                <label className={labelCls}>Final Max</label>
+                                <input type="number" min="0" max="100" value={rsForm.finalMax}
+                                  onChange={ev => setRsForm(f => ({ ...f, finalMax: ev.target.value }))} className={inputCls} />
+                              </div>
+                            </div>
+                            <p className={`text-xs mt-2 font-semibold ${rsComponentsTotal(rsForm) === 100 ? 'text-green-600' : 'text-red-600'}`}>
+                              Total: {rsComponentsTotal(rsForm)} / 100{rsComponentsTotal(rsForm) !== 100 ? ' — must add up to 100' : ' ✓'}
+                            </p>
+
+                            {rsForm.ongoingClassId && (
+                              <div className="flex flex-wrap gap-3 mt-4">
+                                <button type="button" onClick={handleDownloadTemplate}
+                                  className="flex items-center gap-2 px-4 py-2 min-h-11 rounded-lg border border-gray-300 text-gray-700 text-sm font-semibold hover:bg-gray-50 transition">
+                                  📥 Download Excel Template
+                                </button>
+                                <button type="button" onClick={() => rsFileInputRef.current?.click()} disabled={rsImporting}
+                                  className="flex items-center gap-2 px-4 py-2 min-h-11 rounded-lg border border-gray-300 text-gray-700 text-sm font-semibold hover:bg-gray-50 transition disabled:opacity-50">
+                                  {rsImporting ? 'Importing…' : '📤 Upload Filled Excel'}
+                                </button>
+                                <input ref={rsFileInputRef} type="file" accept=".xlsx" className="hidden" onChange={handleImportExcel} />
+                              </div>
+                            )}
+                            <p className="text-xs text-gray-400 mt-2">
+                              Download the template, fill in marks in Excel, then upload it back — or just type marks directly into the table below. Either way goes through the same validation.
+                            </p>
+                          </div>
+                        )}
                       </div>
 
                       {/* Student entries */}
@@ -2662,7 +2742,27 @@ export default function TeacherPortal() {
                                 <th className="py-2 px-2 text-left font-bold text-gray-500 uppercase tracking-wider">Reg No *</th>
                                 <th className="py-2 px-2 text-left font-bold text-gray-500 uppercase tracking-wider">Student Name *</th>
                                 <th className="py-2 px-2 text-left font-bold text-gray-500 uppercase tracking-wider">Father Name</th>
-                                <th className="py-2 px-2 text-left font-bold text-gray-500 uppercase tracking-wider">Marks /100 *</th>
+                                {rsForm.useComponents ? (
+                                  <>
+                                    {rsForm.hasLab ? (
+                                      <>
+                                        <th className="py-2 px-2 text-left font-bold text-gray-500 uppercase tracking-wider">Sessional</th>
+                                        <th className="py-2 px-2 text-left font-bold text-gray-500 uppercase tracking-wider">Lab</th>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <th className="py-2 px-2 text-left font-bold text-gray-500 uppercase tracking-wider">Quiz</th>
+                                        <th className="py-2 px-2 text-left font-bold text-gray-500 uppercase tracking-wider">Presentation</th>
+                                        <th className="py-2 px-2 text-left font-bold text-gray-500 uppercase tracking-wider">Assignment</th>
+                                      </>
+                                    )}
+                                    <th className="py-2 px-2 text-left font-bold text-gray-500 uppercase tracking-wider">Mid</th>
+                                    <th className="py-2 px-2 text-left font-bold text-gray-500 uppercase tracking-wider">Final</th>
+                                    <th className="py-2 px-2 text-left font-bold text-gray-500 uppercase tracking-wider">Total /100</th>
+                                  </>
+                                ) : (
+                                  <th className="py-2 px-2 text-left font-bold text-gray-500 uppercase tracking-wider">Marks /100 *</th>
+                                )}
                                 <th className="py-2 px-2 text-left font-bold text-gray-500 uppercase tracking-wider">GPA /4</th>
                                 <th className="py-2 px-2 text-left font-bold text-gray-500 uppercase tracking-wider">Grade</th>
                                 <th className="py-2 px-2 text-left font-bold text-gray-500 uppercase tracking-wider">Remarks</th>
@@ -2671,9 +2771,16 @@ export default function TeacherPortal() {
                             </thead>
                             <tbody>
                               {rsEntries.map((e, idx) => {
-                                const marks = Number(e.obtainedMarks) || 0;
-                                const autoGrade = e.obtainedMarks !== '' ? rsCalcGrade(marks) : '—';
-                                const autoGpa   = e.obtainedMarks !== '' ? rsCalcGpa(marks)   : '—';
+                                const marks = rsForm.useComponents ? rsEntryTotal(e, rsForm) : (Number(e.obtainedMarks) || 0);
+                                const hasAnyMark = rsForm.useComponents
+                                  ? (rsForm.hasLab
+                                      ? (e.sessionalMarks !== '' || e.labMarks !== '')
+                                      : (e.quizMarks !== '' || e.presentationMarks !== '' || e.assignmentMarks !== ''))
+                                    || e.midMarks !== '' || e.finalMarks !== ''
+                                  : e.obtainedMarks !== '';
+                                const autoGrade = hasAnyMark ? rsCalcGrade(marks) : '—';
+                                const autoGpa   = hasAnyMark ? rsCalcGpa(marks)   : '—';
+                                const numCls = 'w-16 px-2 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#FA7902]';
                                 return (
                                   <tr key={idx} className="border-b border-gray-50 hover:bg-gray-50/50">
                                     <td className="py-2 px-2 text-gray-400">{idx + 1}</td>
@@ -2695,20 +2802,68 @@ export default function TeacherPortal() {
                                         className="w-32 px-2 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#FA7902]"
                                         placeholder="Father Name" />
                                     </td>
-                                    <td className="py-2 px-1">
-                                      <input type="number" min="0" max="100" value={e.obtainedMarks}
-                                        onChange={ev => updateRsEntry(idx, 'obtainedMarks', ev.target.value)}
-                                        className="w-20 px-2 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#FA7902]"
-                                        placeholder="0–100" />
-                                    </td>
+                                    {rsForm.useComponents ? (
+                                      <>
+                                        {rsForm.hasLab ? (
+                                          <>
+                                            <td className="py-2 px-1">
+                                              <input type="number" min="0" max={rsForm.sessionalMax} value={e.sessionalMarks}
+                                                onChange={ev => updateRsEntry(idx, 'sessionalMarks', ev.target.value)}
+                                                className={numCls} placeholder={`/${rsForm.sessionalMax}`} />
+                                            </td>
+                                            <td className="py-2 px-1">
+                                              <input type="number" min="0" max={rsForm.labMax} value={e.labMarks}
+                                                onChange={ev => updateRsEntry(idx, 'labMarks', ev.target.value)}
+                                                className={numCls} placeholder={`/${rsForm.labMax}`} />
+                                            </td>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <td className="py-2 px-1">
+                                              <input type="number" min="0" max={rsForm.quizMax} value={e.quizMarks}
+                                                onChange={ev => updateRsEntry(idx, 'quizMarks', ev.target.value)}
+                                                className={numCls} placeholder={`/${rsForm.quizMax}`} />
+                                            </td>
+                                            <td className="py-2 px-1">
+                                              <input type="number" min="0" max={rsForm.presentationMax} value={e.presentationMarks}
+                                                onChange={ev => updateRsEntry(idx, 'presentationMarks', ev.target.value)}
+                                                className={numCls} placeholder={`/${rsForm.presentationMax}`} />
+                                            </td>
+                                            <td className="py-2 px-1">
+                                              <input type="number" min="0" max={rsForm.assignmentMax} value={e.assignmentMarks}
+                                                onChange={ev => updateRsEntry(idx, 'assignmentMarks', ev.target.value)}
+                                                className={numCls} placeholder={`/${rsForm.assignmentMax}`} />
+                                            </td>
+                                          </>
+                                        )}
+                                        <td className="py-2 px-1">
+                                          <input type="number" min="0" max={rsForm.midMax} value={e.midMarks}
+                                            onChange={ev => updateRsEntry(idx, 'midMarks', ev.target.value)}
+                                            className={numCls} placeholder={`/${rsForm.midMax}`} />
+                                        </td>
+                                        <td className="py-2 px-1">
+                                          <input type="number" min="0" max={rsForm.finalMax} value={e.finalMarks}
+                                            onChange={ev => updateRsEntry(idx, 'finalMarks', ev.target.value)}
+                                            className={numCls} placeholder={`/${rsForm.finalMax}`} />
+                                        </td>
+                                        <td className="py-2 px-2 text-center font-bold text-gray-700">{hasAnyMark ? marks : '—'}</td>
+                                      </>
+                                    ) : (
+                                      <td className="py-2 px-1">
+                                        <input type="number" min="0" max="100" value={e.obtainedMarks}
+                                          onChange={ev => updateRsEntry(idx, 'obtainedMarks', ev.target.value)}
+                                          className="w-20 px-2 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:border-[#FA7902]"
+                                          placeholder="0–100" />
+                                      </td>
+                                    )}
                                     <td className="py-2 px-2 text-center font-semibold text-indigo-600">{autoGpa}</td>
                                     <td className="py-2 px-2">
                                       <span className={`font-bold text-sm ${
-                                        autoGrade === 'A+' || autoGrade === 'A' ? 'text-green-600' :
-                                        autoGrade === 'B+' || autoGrade === 'B' ? 'text-blue-600'  :
-                                        autoGrade === 'C'  ? 'text-yellow-600' :
-                                        autoGrade === 'D'  ? 'text-orange-500' :
-                                        autoGrade === 'F'  ? 'text-red-500'    : 'text-gray-400'
+                                        autoGrade.startsWith('A') ? 'text-green-600' :
+                                        autoGrade.startsWith('B') ? 'text-blue-600'  :
+                                        autoGrade.startsWith('C') ? 'text-yellow-600' :
+                                        autoGrade.startsWith('D') ? 'text-orange-500' :
+                                        autoGrade === 'F'         ? 'text-red-500'    : 'text-gray-400'
                                       }`}>{autoGrade}</span>
                                     </td>
                                     <td className="py-2 px-1">
@@ -3164,68 +3319,79 @@ export default function TeacherPortal() {
                       <label className={labelCls}>Teacher ID * (assigned by admin)</label>
                       <input type="text" required value={regData.teacherId}
                         onChange={(e) => setRegData({ ...regData, teacherId: e.target.value })}
-                        className={inputCls} placeholder="e.g. TCH-2024-001" />
+                        className={regInputCls('teacherId')} placeholder="e.g. TCH-2024-001" />
+                      {regFieldErrors.teacherId && <p className="text-xs text-red-600 mt-1">{regFieldErrors.teacherId}</p>}
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <label className={labelCls}>Full Name *</label>
                         <input type="text" required value={regData.fullName}
                           onChange={(e) => setRegData({ ...regData, fullName: e.target.value })}
-                          className={inputCls} />
+                          className={regInputCls('fullName')} />
+                        {regFieldErrors.fullName && <p className="text-xs text-red-600 mt-1">{regFieldErrors.fullName}</p>}
                       </div>
                       <div>
                         <label className={labelCls}>Email *</label>
                         <input type="email" required value={regData.email}
                           onChange={(e) => setRegData({ ...regData, email: e.target.value })}
-                          className={inputCls} />
+                          className={regInputCls('email')} />
+                        {regFieldErrors.email && <p className="text-xs text-red-600 mt-1">{regFieldErrors.email}</p>}
                       </div>
                       <div>
                         <label className={labelCls}>Password * (min 8 chars)</label>
                         <div className="relative">
                           <input type={showRegPw ? 'text' : 'password'} required minLength={8} value={regData.password}
                             onChange={(e) => setRegData({ ...regData, password: e.target.value })}
-                            className={inputCls} />
+                            className={regInputCls('password')} />
                           <button type="button" onClick={() => setShowRegPw(!showRegPw)}
                             className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs">
                             {showRegPw ? 'Hide' : 'Show'}
                           </button>
                         </div>
+                        {regFieldErrors.password && <p className="text-xs text-red-600 mt-1">{regFieldErrors.password}</p>}
                       </div>
                       <div>
                         <label className={labelCls}>Phone</label>
                         <input type="text" value={regData.phone}
                           onChange={(e) => setRegData({ ...regData, phone: e.target.value })}
-                          className={inputCls} placeholder="03XX-XXXXXXX" />
+                          className={regInputCls('phone')} placeholder="03XX-XXXXXXX" />
+                        {regFieldErrors.phone && <p className="text-xs text-red-600 mt-1">{regFieldErrors.phone}</p>}
                       </div>
                       <div>
                         <label className={labelCls}>CNIC</label>
                         <input type="text" value={regData.cnic}
                           onChange={(e) => setRegData({ ...regData, cnic: e.target.value })}
-                          className={inputCls} placeholder="XXXXX-XXXXXXX-X" />
+                          className={regInputCls('cnic')} placeholder="XXXXX-XXXXXXX-X" />
+                        {regFieldErrors.cnic && <p className="text-xs text-red-600 mt-1">{regFieldErrors.cnic}</p>}
                       </div>
                       <div>
                         <label className={labelCls}>Department</label>
                         <select value={regData.departmentId}
                           onChange={(e) => setRegData({ ...regData, departmentId: e.target.value })}
-                          className={inputCls}>
+                          className={regInputCls('departmentId')}>
                           <option value="">Select department</option>
                           {deptList.map((d) => <option key={d._id} value={d._id}>{d.name}</option>)}
                         </select>
+                        {regFieldErrors.departmentId && <p className="text-xs text-red-600 mt-1">{regFieldErrors.departmentId}</p>}
                       </div>
                       <div>
                         <label className={labelCls}>Qualification</label>
                         <input type="text" value={regData.qualification}
                           onChange={(e) => setRegData({ ...regData, qualification: e.target.value })}
-                          className={inputCls} placeholder="e.g. PhD Computer Science" />
+                          className={regInputCls('qualification')} placeholder="e.g. PhD Computer Science" />
+                        {regFieldErrors.qualification && <p className="text-xs text-red-600 mt-1">{regFieldErrors.qualification}</p>}
                       </div>
                       <div>
                         <label className={labelCls}>Designation</label>
                         <select value={regData.designationId}
                           onChange={(e) => setRegData({ ...regData, designationId: e.target.value })}
-                          className={inputCls}>
+                          className={regInputCls('designationId')}>
                           <option value="">Select designation</option>
-                          {designationList.map((d) => <option key={d._id} value={d._id}>{d.title}</option>)}
+                          {designationList
+                            .filter((d) => !NON_TEACHING_DESIGNATIONS.includes(d.title))
+                            .map((d) => <option key={d._id} value={d._id}>{d.title}</option>)}
                         </select>
+                        {regFieldErrors.designationId && <p className="text-xs text-red-600 mt-1">{regFieldErrors.designationId}</p>}
                       </div>
                     </div>
                     <div>

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import axios from 'axios';
+import formatApiError from '../utils/formatApiError';
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
@@ -54,7 +55,7 @@ export default function AdminLogin() {
         router.push('/admin/dashboard');
       }
     } catch (err) {
-      setError(err.response?.data?.message || 'Invalid credentials. Please try again.');
+      setError(formatApiError(err, 'Invalid credentials. Please try again.'));
     }
     setLoading(false);
   }
@@ -96,7 +97,7 @@ export default function AdminLogin() {
       localStorage.setItem('adminData', JSON.stringify(data.admin));
       router.push('/admin/dashboard');
     } catch (err) {
-      setError(err.response?.data?.message || 'Invalid code. Please try again.');
+      setError(formatApiError(err, 'Invalid code. Please try again.'));
       if (!useRecovery) setOtpDigits(['', '', '', '', '', '']);
       digitRefs.current[0]?.focus();
     }

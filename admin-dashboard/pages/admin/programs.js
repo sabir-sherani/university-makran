@@ -4,6 +4,7 @@ import Image from 'next/image';
 import AdminHeader from '../../components/AdminHeader';
 import RecycleBinPanel from '../../components/RecycleBinPanel';
 import axios from 'axios';
+import formatApiError from '../../utils/formatApiError';
 import {
   LuBookOpen, LuFlaskConical, LuPalette, LuUpload, LuX,
   LuClock, LuLayers, LuFileText, LuPencil, LuTrash2,
@@ -186,7 +187,7 @@ export default function Programs() {
       resetForm();
       fetchPrograms();
     } catch (err) {
-      showFlash(err.response?.data?.message || 'Error saving program.', false);
+      showFlash(formatApiError(err, 'Error saving program.'), false);
     }
     setSaving(false);
   }

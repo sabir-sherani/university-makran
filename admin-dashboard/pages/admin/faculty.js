@@ -2,6 +2,7 @@
 import Head from 'next/head';
 import AdminHeader from '../../components/AdminHeader';
 import axios from 'axios';
+import formatApiError from '../../utils/formatApiError';
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
@@ -85,7 +86,7 @@ export default function Faculty() {
       resetForm();
       fetchAll();
     } catch (err) {
-      setMsg(err.response?.data?.message || 'Error saving faculty member.');
+      setMsg(formatApiError(err, 'Error saving faculty member.'));
     }
     setSaving(false);
   }

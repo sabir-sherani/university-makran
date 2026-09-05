@@ -45,6 +45,9 @@ const TeacherSchema = new mongoose.Schema({
     description: String,
   }],
   status: { type: String, enum: TEACHER_STATUS, default: 'pending' },
+  // HOD-granted exception raising this teacher's active-subject cap from 4 to 5
+  // (see the cap check in routes/hodPortal.js's ongoing-classes assignment route).
+  extraSubjectAllowed: { type: Boolean, default: false },
   ...accountSecurityFields,
 }, { timestamps: true });
 

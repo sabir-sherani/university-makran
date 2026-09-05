@@ -3,13 +3,14 @@ import Head from 'next/head';
 import { useRouter } from 'next/router';
 import AdminHeader from '../../components/AdminHeader';
 import axios from 'axios';
+import formatApiError from '../../utils/formatApiError';
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
 const TABS = [
   { key: 'hod',     label: 'HOD Accounts',       color: 'indigo',  idField: 'hodId',     idLabel: 'HOD ID',     idPlaceholder: 'HOD-001' },
   { key: 'exam',    label: 'Examination Section',  color: 'purple',  idField: 'examId',    idLabel: 'Exam ID',    idPlaceholder: 'EXAM-001' },
-  { key: 'finance', label: 'Finance Staff',        color: 'emerald', idField: 'financeId', idLabel: 'Finance ID', idPlaceholder: 'FIN-001' },
+  { key: 'finance', label: 'Finance Section',      color: 'emerald', idField: 'financeId', idLabel: 'Finance ID', idPlaceholder: 'FIN-001' },
 ];
 
 const ROLE_BADGE = {
@@ -143,7 +144,7 @@ export default function StaffManagement() {
       setEditId(null);
       loadStaff(activeTab, editId ? pagination[activeTab].page : 1);
     } catch (err) {
-      flash(err.response?.data?.message || 'Error saving account.');
+      flash(formatApiError(err, 'Error saving account.'));
     }
     setSaving(false);
   }
@@ -177,7 +178,7 @@ export default function StaffManagement() {
         {/* Header */}
         <div className="mb-8">
           <h2 className="text-3xl font-bold text-primary">Staff Management</h2>
-          <p className="text-sm text-gray-500 mt-1">Create and manage HOD, Examination Section, and Finance Staff accounts.</p>
+          <p className="text-sm text-gray-500 mt-1">Create and manage HOD, Examination Section, and Finance Section accounts.</p>
         </div>
 
         {/* Role tabs */}
@@ -204,7 +205,12 @@ export default function StaffManagement() {
 
           {/* Form panel */}
           <div className="lg:col-span-1">
-            {!showForm ? (
+            {(activeTab === 'exam' || activeTab === 'finance') && pagination[activeTab].total > 0 && !showForm ? (
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 text-sm text-amber-800">
+                <p className="font-bold mb-1">Only one {tab.label} account is allowed.</p>
+                <p>An active account already exists. Archive it from the list before creating a new one.</p>
+              </div>
+            ) : !showForm ? (
               <button onClick={openCreate}
                 className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-white font-bold text-sm transition-all"
                 style={{ background: 'linear-gradient(135deg, #041476, #0d2a90)', boxShadow: '0 8px 24px rgba(4,20,118,0.25)' }}>
@@ -283,14 +289,16 @@ export default function StaffManagement() {
                       className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary" />
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Designation</label>
-                    <select name="designationId" value={form.designationId} onChange={handleField}
-                      className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary">
-                      <option value="">Select designation</option>
-                      {designations.map(d => <option key={d._id} value={d._id}>{d.title}</option>)}
-                    </select>
-                  </div>
+                  {activeTab !== 'hod' && (
+                    <div>
+                      <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Designation</label>
+                      <select name="designationId" value={form.designationId} onChange={handleField}
+                        className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary">
+                        <option value="">Select designation</option>
+                        {designations.map(d => <option key={d._id} value={d._id}>{d.title}</option>)}
+                      </select>
+                    </div>
+                  )}
 
                   {(activeTab === 'hod' || activeTab === 'finance') && (
                     <div>

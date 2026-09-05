@@ -110,7 +110,19 @@ export default function AdminHeader() {
   }, []);
 
   return (
-    <div className="flex">
+    <>
+      {/* ── Mobile top bar — real height, pushes page content below it instead of
+          floating over it (the old fixed-position hamburger had no layout footprint,
+          so it overlapped whatever sat at the top-left of each page on small screens) ── */}
+      <div className="lg:hidden sticky top-0 z-20 flex items-center gap-3 h-14 px-3 bg-white border-b border-gray-100 shadow-sm">
+        <button
+          onClick={() => setMobileOpen(true)}
+          className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors shrink-0"
+        >
+          <LuMenu size={20} />
+        </button>
+        <span className="text-sm font-bold text-gray-700 truncate">University of Makran</span>
+      </div>
 
       {/* ── Mobile overlay ── */}
       {mobileOpen && (
@@ -214,15 +226,6 @@ export default function AdminHeader() {
           <p className="text-white/25 text-[10px] font-medium text-center uppercase tracking-wider">UoMP v1.0</p>
         </div>
       </aside>
-
-      {/* Mobile hamburger — shown only when sidebar is hidden */}
-      <button
-        onClick={() => setMobileOpen(true)}
-        className="lg:hidden fixed top-3 left-3 z-50 p-2 rounded-lg bg-white shadow text-gray-500 hover:bg-gray-100 transition-colors"
-      >
-        <LuMenu size={20} />
-      </button>
-
-    </div>
+    </>
   );
 }

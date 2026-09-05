@@ -41,7 +41,7 @@ const {
 // reversible via /restore); permanent deletion requires the requesting
 // admin's own password and is refused if the record has any linked activity
 // (results, attendance, fees, ...) so history never silently disappears.
-function registerAccountArchiveRoutes({ base, Model, entityType, hasLinkedRecords }) {
+function registerAccountArchiveRoutes({ base, Model, entityType, hasLinkedRecords, beforeRestore }) {
   router.patch(`${base}/:id/archive`, verifyAdminToken, async (req, res) => {
     try {
       const doc = await Model.findById(req.params.id);
@@ -70,6 +70,11 @@ function registerAccountArchiveRoutes({ base, Model, entityType, hasLinkedRecord
       const doc = await Model.findById(req.params.id);
       if (!doc) return res.status(404).json({ message: `${entityType} not found.` });
       if (doc.isActive !== false) return res.status(400).json({ message: `${entityType} is not archived.` });
+
+      if (beforeRestore) {
+        const blockMessage = await beforeRestore(doc);
+        if (blockMessage) return res.status(400).json({ message: blockMessage });
+      }
 
       const before = { isActive: doc.isActive, archivedAt: doc.archivedAt };
       doc.isActive = true;
@@ -205,12 +210,15 @@ router.get('/stats', verifyAdminToken, async (req, res) => {
 // GET /api/portal/admin/students?page=&limit=
 router.get('/students', verifyAdminToken, async (req, res) => {
   try {
-    const { status, department, program, search, includeArchived, page, limit } = req.query;
+    const { status, department, program, session, semester, timeSession, search, includeArchived, page, limit } = req.query;
     const filter = {};
     if (includeArchived !== 'true') filter.isActive = { $ne: false };
     if (status && status !== 'all') filter.status = status;
     if (department) filter.department = department;
     if (program) filter.program = program;
+    if (session) filter.session = session;
+    if (semester) filter.currentSemester = Number(semester);
+    if (timeSession) filter.timeSession = timeSession;
     if (search) {
       filter.$or = [
         { fullName: { $regex: escapeRegex(search), $options: 'i' } },
@@ -334,11 +342,12 @@ router.post('/students/advance-semester', verifyAdminToken, async (req, res) => 
 // GET /api/portal/admin/teachers?page=&limit=
 router.get('/teachers', verifyAdminToken, async (req, res) => {
   try {
-    const { status, department, search, includeArchived, page, limit } = req.query;
+    const { status, department, designation, search, includeArchived, page, limit } = req.query;
     const filter = {};
     if (includeArchived !== 'true') filter.isActive = { $ne: false };
     if (status && status !== 'all') filter.status = status;
     if (department) filter.department = department;
+    if (designation) filter.designation = designation;
     if (search) {
       filter.$or = [
         { fullName: { $regex: escapeRegex(search), $options: 'i' } },
@@ -668,6 +677,14 @@ router.post('/staff/hod', verifyAdminToken, [
 ], async (req, res) => {
   try {
     const { hodId, fullName, email, password, phone, cnic, qualification } = req.body;
+
+    // One HOD per department — a second account for a department that
+    // already has an (unarchived) HOD would leave it ambiguous who's in charge.
+    const existingHod = await HOD.findOne({ departmentId: req.resolvedRefs.department._id, isActive: { $ne: false } });
+    if (existingHod) {
+      return res.status(400).json({ message: `${req.resolvedRefs.department.name} already has an HOD account (${existingHod.fullName}). Archive that account first if you need to replace them.` });
+    }
+
     const hashed = await bcrypt.hash(password, 10);
     const data = snapshotRefs(req, { hodId, fullName, email, phone, cnic, qualification, password: hashed });
     const hod = await new HOD(data).save();
@@ -697,6 +714,20 @@ router.patch('/staff/hod/:id', verifyAdminToken, [
   try {
     const before = await HOD.findById(req.params.id).select('-password');
     if (!before) return res.status(404).json({ message: 'HOD not found.' });
+
+    // Same one-HOD-per-department rule as creation, but only when the
+    // department is actually changing.
+    if (req.body.departmentId && req.resolvedRefs.department._id.toString() !== String(before.departmentId)) {
+      const existingHod = await HOD.findOne({
+        departmentId: req.resolvedRefs.department._id,
+        isActive: { $ne: false },
+        _id: { $ne: before._id },
+      });
+      if (existingHod) {
+        return res.status(400).json({ message: `${req.resolvedRefs.department.name} already has an HOD account (${existingHod.fullName}). Archive that account first if you need to replace them.` });
+      }
+    }
+
     const updates = {};
     HOD_STAFF_FIELDS.forEach((f) => { if (req.body[f] !== undefined) updates[f] = req.body[f]; });
     delete updates.department;
@@ -718,7 +749,16 @@ router.patch('/staff/hod/:id', verifyAdminToken, [
   }
 });
 
-registerAccountArchiveRoutes({ base: '/staff/hod', Model: HOD, entityType: 'HOD', hasLinkedRecords: hodHasLinkedRecords });
+registerAccountArchiveRoutes({
+  base: '/staff/hod', Model: HOD, entityType: 'HOD', hasLinkedRecords: hodHasLinkedRecords,
+  // Restoring an archived HOD must not create a second active HOD for a
+  // department that already has one (e.g. a replacement was hired since).
+  beforeRestore: async (doc) => {
+    if (!doc.departmentId) return null;
+    const existingHod = await HOD.findOne({ departmentId: doc.departmentId, isActive: { $ne: false }, _id: { $ne: doc._id } });
+    return existingHod ? `${doc.department} already has an HOD account (${existingHod.fullName}). Archive that account first.` : null;
+  },
+});
 
 // ── Examination Staff ─────────────────────────────────
 router.get('/staff/exam', verifyAdminToken, async (req, res) => {
@@ -748,6 +788,13 @@ router.post('/staff/exam', verifyAdminToken, [
   validate,
 ], async (req, res) => {
   try {
+    // The university has exactly one Examination Branch — a second active
+    // account would leave it ambiguous who owns exam operations.
+    const existingExamStaff = await ExaminationStaff.findOne({ isActive: { $ne: false } });
+    if (existingExamStaff) {
+      return res.status(400).json({ message: `An Examination Branch account already exists (${existingExamStaff.fullName}). Archive that account first if you need to replace them.` });
+    }
+
     const { examId, fullName, email, password, phone, cnic, section } = req.body;
     const hashed = await bcrypt.hash(password, 10);
     const data = snapshotRefs(req, { examId, fullName, email, phone, cnic, section, password: hashed });
@@ -796,7 +843,14 @@ router.patch('/staff/exam/:id', verifyAdminToken, [
   }
 });
 
-registerAccountArchiveRoutes({ base: '/staff/exam', Model: ExaminationStaff, entityType: 'ExaminationStaff', hasLinkedRecords: examStaffHasLinkedRecords });
+registerAccountArchiveRoutes({
+  base: '/staff/exam', Model: ExaminationStaff, entityType: 'ExaminationStaff', hasLinkedRecords: examStaffHasLinkedRecords,
+  // Restoring an archived exam account must not create a second active one.
+  beforeRestore: async (doc) => {
+    const existing = await ExaminationStaff.findOne({ isActive: { $ne: false }, _id: { $ne: doc._id } });
+    return existing ? `An Examination Branch account already exists (${existing.fullName}). Archive that account first.` : null;
+  },
+});
 
 // ── Finance Staff ─────────────────────────────────────
 router.get('/staff/finance', verifyAdminToken, async (req, res) => {
@@ -826,6 +880,13 @@ router.post('/staff/finance', verifyAdminToken, [
   validate,
 ], async (req, res) => {
   try {
+    // The university has exactly one Finance Branch — a second active
+    // account would leave it ambiguous who owns finance operations.
+    const existingFinanceStaff = await FinanceStaff.findOne({ isActive: { $ne: false } });
+    if (existingFinanceStaff) {
+      return res.status(400).json({ message: `A Finance Branch account already exists (${existingFinanceStaff.fullName}). Archive that account first if you need to replace them.` });
+    }
+
     const { financeId, fullName, email, password, phone, cnic } = req.body;
     const hashed = await bcrypt.hash(password, 10);
     const data = snapshotRefs(req, { financeId, fullName, email, phone, cnic, password: hashed });
@@ -875,7 +936,14 @@ router.patch('/staff/finance/:id', verifyAdminToken, [
   }
 });
 
-registerAccountArchiveRoutes({ base: '/staff/finance', Model: FinanceStaff, entityType: 'FinanceStaff', hasLinkedRecords: financeStaffHasLinkedRecords });
+registerAccountArchiveRoutes({
+  base: '/staff/finance', Model: FinanceStaff, entityType: 'FinanceStaff', hasLinkedRecords: financeStaffHasLinkedRecords,
+  // Restoring an archived finance account must not create a second active one.
+  beforeRestore: async (doc) => {
+    const existing = await FinanceStaff.findOne({ isActive: { $ne: false }, _id: { $ne: doc._id } });
+    return existing ? `A Finance Branch account already exists (${existing.fullName}). Archive that account first.` : null;
+  },
+});
 
 // ══════════════════════════════════════════════════════
 // ONGOING CLASSES
@@ -1254,6 +1322,132 @@ router.delete('/designations/:id', verifyAdminToken, async (req, res) => {
   try {
     await Designation.findByIdAndDelete(req.params.id);
     res.json({ message: 'Designation deleted.' });
+  } catch (err) { res.sendServerError(err); }
+});
+
+// ── Rooms (timetable venue catalogue) ───────────────────────────────────────────
+// Admin manages the full catalogue, including shared/university-wide rooms
+// (departmentId: null) — see models/Room.js. HODs get a narrower, department-
+// scoped CRUD for their own rooms only (routes/hodPortal.js).
+const Room = require('../models/Room');
+
+// GET /api/portal/admin/rooms?includeArchived=true&department=<id>
+router.get('/rooms', verifyAdminToken, async (req, res) => {
+  try {
+    const filter = req.query.includeArchived === 'true' ? {} : { deletedAt: null };
+    if (req.query.department) {
+      if (!mongoose.isValidObjectId(req.query.department)) {
+        return res.status(400).json({ message: 'Invalid department id.' });
+      }
+      filter.departmentId = req.query.department;
+    }
+    const rooms = await Room.find(filter).sort({ code: 1 });
+    res.json(rooms);
+  } catch (err) { res.sendServerError(err); }
+});
+
+router.post('/rooms', verifyAdminToken, [
+  requiredString('code', { max: 20 }),
+  requiredString('name', { max: 120 }),
+  optionalString('building', { max: 120 }),
+  numberInRange('capacity', { min: 1, max: 2000, optional: true }),
+  enumField('type', ['classroom', 'lab', 'seminar'], { optional: true }),
+  departmentRef({ optional: true }),
+  validate,
+], async (req, res) => {
+  try {
+    const { code, name, building, capacity, type } = req.body;
+    const data = { code, name, building: building || '', type: type || 'classroom' };
+    if (capacity !== undefined) data.capacity = capacity;
+    // No department given -> shared/university-wide room (departmentId stays null).
+    snapshotRefs(req, data);
+    const room = await new Room(data).save();
+    await logAudit(req, {
+      action: 'room.create', entityType: 'Room', entityId: room._id,
+      entityLabel: `${room.code} — ${room.name}`, after: room.toObject(),
+    });
+    res.status(201).json(room);
+  } catch (err) {
+    if (isDuplicateKeyError(err)) return res.status(400).json({ message: duplicateKeyMessage(err) });
+    res.status(400).json({ message: err.message });
+  }
+});
+
+router.patch('/rooms/:id', verifyAdminToken, [
+  optionalString('code', { max: 20 }),
+  optionalString('name', { max: 120 }),
+  optionalString('building', { max: 120 }),
+  numberInRange('capacity', { min: 1, max: 2000, optional: true }),
+  enumField('type', ['classroom', 'lab', 'seminar'], { optional: true }),
+  departmentRef({ optional: true }),
+  validate,
+], async (req, res) => {
+  try {
+    const room = await Room.findById(req.params.id);
+    if (!room) return res.status(404).json({ message: 'Room not found.' });
+    const before = room.toObject();
+
+    const { code, name, building, capacity, type, isActive, clearDepartment } = req.body;
+    if (code !== undefined) room.code = code;
+    if (name !== undefined) room.name = name;
+    if (building !== undefined) room.building = building;
+    if (capacity !== undefined) room.capacity = capacity;
+    if (type !== undefined) room.type = type;
+    if (isActive !== undefined) room.isActive = !!isActive;
+    if (clearDepartment) { room.departmentId = null; room.department = ''; }
+    snapshotRefs(req, room);
+
+    await room.save();
+    await logAudit(req, {
+      action: 'room.update', entityType: 'Room', entityId: room._id,
+      entityLabel: `${room.code} — ${room.name}`, before, after: room.toObject(),
+    });
+    res.json(room);
+  } catch (err) {
+    if (isDuplicateKeyError(err)) return res.status(400).json({ message: duplicateKeyMessage(err) });
+    res.status(400).json({ message: err.message });
+  }
+});
+
+// DELETE /api/portal/admin/rooms/:id — soft delete (matches the deletedAt
+// convention already used by AdministrationDept/Program/Department/Course).
+router.delete('/rooms/:id', verifyAdminToken, async (req, res) => {
+  try {
+    const room = await Room.findByIdAndUpdate(req.params.id, { deletedAt: new Date(), isActive: false }, { new: true });
+    if (!room) return res.status(404).json({ message: 'Room not found.' });
+    await logAudit(req, { action: 'room.delete', entityType: 'Room', entityId: room._id, entityLabel: `${room.code} — ${room.name}` });
+    res.json({ message: 'Room deleted.' });
+  } catch (err) { res.sendServerError(err); }
+});
+
+router.patch('/rooms/:id/restore', verifyAdminToken, async (req, res) => {
+  try {
+    const room = await Room.findByIdAndUpdate(req.params.id, { deletedAt: null, isActive: true }, { new: true });
+    if (!room) return res.status(404).json({ message: 'Room not found.' });
+    await logAudit(req, { action: 'room.restore', entityType: 'Room', entityId: room._id, entityLabel: `${room.code} — ${room.name}` });
+    res.json({ message: 'Room restored.', room });
+  } catch (err) { res.sendServerError(err); }
+});
+
+// ── Timetable (read-only, all departments) ─────────────────────────────────────
+const TimetableSlot = require('../models/TimetableSlot');
+const { buildGrid } = require('../utils/timetableGrid');
+
+// GET /api/portal/admin/timetable?departmentId=&sessionId=&programId=&semesterNumber=&timeSession=&teacherId=&roomId=&day=
+router.get('/timetable', verifyAdminToken, async (req, res) => {
+  try {
+    const f = { status: 'active' };
+    const { departmentId, sessionId, programId, semesterNumber, timeSession, teacherId, roomId, day } = req.query;
+    if (departmentId) f.departmentId = departmentId;
+    if (sessionId) f.sessionId = sessionId;
+    if (programId) f.programId = programId;
+    if (semesterNumber) f.semesterNumber = Number(semesterNumber);
+    if (timeSession) f.timeSession = timeSession;
+    if (teacherId) f.teacher = teacherId;
+    if (roomId) f.roomId = roomId;
+    if (day) f.day = day;
+    const slots = await TimetableSlot.find(f).sort({ day: 1, startTime: 1 });
+    res.json({ slots, grid: buildGrid(slots) });
   } catch (err) { res.sendServerError(err); }
 });
 

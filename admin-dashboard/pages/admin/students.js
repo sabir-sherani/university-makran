@@ -3,6 +3,7 @@ import Head from 'next/head';
 import AdminHeader from '../../components/AdminHeader';
 import axios from 'axios';
 import { useRouter } from 'next/router';
+import formatApiError from '../../utils/formatApiError';
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
@@ -31,7 +32,6 @@ function DetailPanel({ student, onClose, onStatusChange, onAcademicChange }) {
   const [acad, setAcad]         = useState({
     rollNo:               student.rollNo || '',
     currentSemester:      student.currentSemester || 1,
-    cgpa:                 student.cgpa ?? '',
     attendancePercentage: student.attendancePercentage ?? '',
   });
   const [acadSaving, setAcadSaving] = useState(false);
@@ -42,7 +42,6 @@ function DetailPanel({ student, onClose, onStatusChange, onAcademicChange }) {
     setAcad({
       rollNo:               student.rollNo || '',
       currentSemester:      student.currentSemester || 1,
-      cgpa:                 student.cgpa ?? '',
       attendancePercentage: student.attendancePercentage ?? '',
     });
   }, [student]);
@@ -65,7 +64,6 @@ function DetailPanel({ student, onClose, onStatusChange, onAcademicChange }) {
       rollNo: acad.rollNo,
       currentSemester: Number(acad.currentSemester),
     };
-    if (acad.cgpa !== '') payload.cgpa = Number(acad.cgpa);
     if (acad.attendancePercentage !== '') payload.attendancePercentage = Number(acad.attendancePercentage);
     try {
       await onAcademicChange(student._id, payload);
@@ -133,12 +131,6 @@ function DetailPanel({ student, onClose, onStatusChange, onAcademicChange }) {
               </select>
             </div>
             <div>
-              <label className="text-xs text-gray-500 font-semibold block mb-1">CGPA (0 – 4)</label>
-              <input type="number" min="0" max="4" step="0.01" value={acad.cgpa}
-                onChange={e => setAcad(a => ({ ...a, cgpa: e.target.value }))}
-                className={inputCls} placeholder="e.g. 3.50" />
-            </div>
-            <div>
               <label className="text-xs text-gray-500 font-semibold block mb-1">Attendance %</label>
               <input type="number" min="0" max="100" step="1" value={acad.attendancePercentage}
                 onChange={e => setAcad(a => ({ ...a, attendancePercentage: e.target.value }))}
@@ -185,6 +177,13 @@ export default function StudentsPage() {
   const [search, setSearch]         = useState('');
   const [filterStatus, setStatus]   = useState('');
   const [filterDept, setDept]       = useState('');
+  const [filterProgram, setFilterProgram]         = useState('');
+  const [filterSemester, setFilterSemester]       = useState('');
+  const [filterSession, setFilterSession]         = useState('');
+  const [filterTimeSession, setFilterTimeSession] = useState('');
+  const [deptOptions, setDeptOptions]       = useState([]);
+  const [programOptions, setProgramOptions] = useState([]);
+  const [sessionOptions, setSessionOptions] = useState([]);
   const [msg, setMsg]               = useState({ text: '', type: '' });
   const [detail, setDetail]         = useState(null);
   const [actingId, setActingId]     = useState(null);
@@ -202,6 +201,24 @@ export default function StudentsPage() {
     setRouterReady(true);
   }, [router.isReady]);
 
+  // Filter dropdown options — canonical lists, not derived from the current
+  // (paginated) student results, so every department/program/batch shows up
+  // regardless of what's on the current page.
+  useEffect(() => {
+    axios.get(`${API}/lookups/departments`).then(({ data }) => setDeptOptions(data || [])).catch(() => {});
+    axios.get(`${API}/lookups/sessions`).then(({ data }) => setSessionOptions(data || [])).catch(() => {});
+  }, []);
+
+  // Program options cascade from the selected department (all programs when
+  // none is selected). Students are still filtered by program *title*, not
+  // id, since older records may only have the denormalized string fields —
+  // this just scopes which titles show up in the dropdown.
+  useEffect(() => {
+    const deptId = deptOptions.find(d => d.name === filterDept)?._id;
+    const params = deptId ? { department: deptId } : {};
+    axios.get(`${API}/lookups/programs`, { params }).then(({ data }) => setProgramOptions(data || [])).catch(() => {});
+  }, [filterDept, deptOptions]);
+
   // Advance semester state
   const [advOpen, setAdvOpen]           = useState(false);
   const [advDept, setAdvDept]           = useState('');
@@ -216,6 +233,11 @@ export default function StudentsPage() {
 
   const flash = (text, type = 'success') => { setMsg({ text, type }); setTimeout(() => setMsg({ text: '', type: '' }), 4000); };
 
+  const currentFilters = () => ({
+    search, status: filterStatus, department: filterDept,
+    program: filterProgram, semester: filterSemester, session: filterSession, timeSession: filterTimeSession,
+  });
+
   const load = useCallback(async (q = {}, pageNum = 1) => {
     setLoading(true);
     try {
@@ -223,6 +245,10 @@ export default function StudentsPage() {
       if (q.search) params.search = q.search;
       if (q.status) params.status = q.status;
       if (q.department) params.department = q.department;
+      if (q.program) params.program = q.program;
+      if (q.semester) params.semester = q.semester;
+      if (q.session) params.session = q.session;
+      if (q.timeSession) params.timeSession = q.timeSession;
       const { data } = await axios.get(`${API}/portal/admin/students`, { ...authHeaders(), params });
       setStudents(data.data || []);
       setTotal(data.total || 0);
@@ -240,7 +266,7 @@ export default function StudentsPage() {
   }, [router]);
 
   useEffect(() => {
-    if (routerReady) load({ search, status: filterStatus, department: filterDept }, 1);
+    if (routerReady) load(currentFilters(), 1);
   }, [routerReady]);
 
   async function handleStatusChange(id, status) {
@@ -249,7 +275,7 @@ export default function StudentsPage() {
       flash(`Status updated to ${status}.`);
       setStudents(prev => prev.map(s => s._id === id ? { ...s, status } : s));
       if (detail?._id === id) setDetail(p => ({ ...p, status }));
-    } catch (err) { flash(err.response?.data?.message || 'Update failed.', 'error'); }
+    } catch (err) { flash(formatApiError(err, 'Update failed.'), 'error'); }
   }
 
   async function handleAcademicChange(id, payload) {
@@ -265,18 +291,18 @@ export default function StudentsPage() {
       await axios.delete(`${API}/portal/admin/students/${id}`, authHeaders());
       flash('Student deleted.');
       if (detail?._id === id) setDetail(null);
-      load({ search, status: filterStatus, department: filterDept }, page);
-    } catch (err) { flash(err.response?.data?.message || 'Delete failed.', 'error'); }
+      load(currentFilters(), page);
+    } catch (err) { flash(formatApiError(err, 'Delete failed.'), 'error'); }
     setActingId(null);
   }
 
   function handleSearch(e) {
     e.preventDefault();
-    load({ search, status: filterStatus, department: filterDept }, 1);
+    load(currentFilters(), 1);
   }
 
   function goToPage(p) {
-    load({ search, status: filterStatus, department: filterDept }, p);
+    load(currentFilters(), p);
   }
 
   async function handleAdvancePreview() {
@@ -292,7 +318,7 @@ export default function StudentsPage() {
       const sel = {};
       (data.students || []).forEach(s => { sel[s._id] = true; });
       setAdvSelected(sel);
-    } catch (err) { flash(err.response?.data?.message || 'Preview failed.', 'error'); }
+    } catch (err) { flash(formatApiError(err, 'Preview failed.'), 'error'); }
     setAdvPreviewing(false);
   }
 
@@ -321,8 +347,8 @@ export default function StudentsPage() {
       setAdvPreview(null); setAdvStudents([]); setAdvSelected({}); setAdvConfirmed(false);
       setAdvDept(''); setAdvSession(''); setAdvSemester('1');
       setAdvOpen(false);
-      load({ search, status: filterStatus, department: filterDept }, page);
-    } catch (err) { flash(err.response?.data?.message || 'Advance failed.', 'error'); }
+      load(currentFilters(), page);
+    } catch (err) { flash(formatApiError(err, 'Advance failed.'), 'error'); }
     setAdvancing(false);
   }
 
@@ -353,11 +379,37 @@ export default function StudentsPage() {
               <option value="rejected">Rejected</option>
               <option value="suspended">Suspended</option>
             </select>
-            <input value={filterDept} onChange={e => setDept(e.target.value)}
-              placeholder="Department…"
-              className="w-44 px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-500" />
+            <select value={filterDept} onChange={e => { setDept(e.target.value); setFilterProgram(''); }}
+              className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-500">
+              <option value="">All Departments</option>
+              {deptOptions.map(d => <option key={d._id} value={d.name}>{d.name}</option>)}
+            </select>
+            <select value={filterProgram} onChange={e => setFilterProgram(e.target.value)}
+              className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-500">
+              <option value="">All Programs</option>
+              {programOptions.map(p => <option key={p._id} value={p.title}>{p.title}</option>)}
+            </select>
+            <select value={filterSemester} onChange={e => setFilterSemester(e.target.value)}
+              className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-500">
+              <option value="">All Semesters</option>
+              {[1,2,3,4,5,6,7,8].map(n => <option key={n} value={n}>Semester {n}</option>)}
+            </select>
+            <select value={filterSession} onChange={e => setFilterSession(e.target.value)}
+              className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-500">
+              <option value="">All Batches</option>
+              {sessionOptions.map(s => <option key={s._id} value={s.name}>{s.name}</option>)}
+            </select>
+            <select value={filterTimeSession} onChange={e => setFilterTimeSession(e.target.value)}
+              className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-500">
+              <option value="">Morning &amp; Evening</option>
+              <option value="Morning">🌅 Morning</option>
+              <option value="Evening">🌙 Evening</option>
+            </select>
             <button type="submit" className="px-6 py-2.5 text-white font-bold rounded-xl text-sm hover:opacity-90 transition" style={{ background: '#041476' }}>Search</button>
-            <button type="button" onClick={() => { setSearch(''); setStatus(''); setDept(''); load({}, 1); }}
+            <button type="button" onClick={() => {
+              setSearch(''); setStatus(''); setDept(''); setFilterProgram(''); setFilterSemester(''); setFilterSession(''); setFilterTimeSession('');
+              load({}, 1);
+            }}
               className="px-4 py-2.5 border border-gray-200 text-gray-600 font-medium rounded-xl text-sm hover:bg-gray-50 transition">Reset</button>
           </form>
 
@@ -365,7 +417,7 @@ export default function StudentsPage() {
           <div className="flex items-center justify-between mb-5 flex-wrap gap-2">
             <div className="flex gap-2 flex-wrap">
               {[['', 'All'], ['pending', 'Pending'], ['approved', 'Approved'], ['rejected', 'Rejected'], ['suspended', 'Suspended']].map(([val, lbl]) => (
-                <button key={val} onClick={() => { setStatus(val); load({ search, status: val, department: filterDept }, 1); }}
+                <button key={val} onClick={() => { setStatus(val); load({ ...currentFilters(), status: val }, 1); }}
                   className={`px-4 py-1.5 rounded-full text-xs font-bold border transition ${filterStatus === val ? 'text-white border-primary' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
                   style={filterStatus === val ? { background: '#041476' } : {}}>
                   {lbl}
@@ -398,7 +450,7 @@ export default function StudentsPage() {
                       ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-50">
+                  <tbody className="divide-y divide-dashed divide-gray-200">
                     {students.map(s => (
                       <tr key={s._id} className="hover:bg-gray-50/50 transition-colors">
                         <td className="px-4 py-3 font-mono text-xs text-gray-600 whitespace-nowrap">{s.registrationNo}</td>

@@ -3,6 +3,7 @@ import Head from 'next/head';
 import { useRouter } from 'next/router';
 import AdminHeader from '../../components/AdminHeader';
 import axios from 'axios';
+import formatApiError from '../../utils/formatApiError';
 import { LuHistory, LuSearch, LuChevronLeft, LuChevronRight, LuX } from 'react-icons/lu';
 
 const API = process.env.NEXT_PUBLIC_API_URL;
@@ -99,7 +100,7 @@ export default function ActivityLog() {
       setPages(data.pages || 1);
       setPage(data.page || 1);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to load activity log.');
+      setError(formatApiError(err, 'Failed to load activity log.'));
     }
     setLoading(false);
   }, [filters]);

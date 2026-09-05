@@ -25,6 +25,7 @@ import {
 } from 'react-icons/lu';
 
 const API = process.env.NEXT_PUBLIC_API_URL;
+const FRONTEND_URL = process.env.NEXT_PUBLIC_FRONTEND_URL;
 
 function getAdminToken() {
   if (typeof window === 'undefined') return '';
@@ -251,21 +252,21 @@ export default function Dashboard() {
 
         {/* ── Welcome banner ── */}
         <div
-          className="relative overflow-hidden px-8 py-10"
+          className="relative overflow-hidden px-4 py-6 sm:px-8 sm:py-10"
           style={{ background: 'linear-gradient(135deg, #041476 0%, #6b0530 55%, #041476 100%)' }}
         >
           <div className="absolute -top-12 -right-12 w-64 h-64 rounded-full bg-white/5" />
-          <div className="absolute top-6 right-40 w-32 h-32 rounded-full bg-white/5" />
+          <div className="absolute top-6 right-40 w-32 h-32 rounded-full bg-white/5 hidden sm:block" />
           <div className="absolute bottom-0 left-1/3 w-48 h-48 rounded-full bg-white/3" />
 
-          <div className="relative flex items-center justify-between gap-5">
-            <div className="flex items-center gap-5">
+          <div className="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-5">
+            <div className="flex items-center gap-4 sm:gap-5 min-w-0">
               <div className="shrink-0 bg-white rounded-2xl p-2 shadow-xl">
-                <Image src="/logo.png.webp" alt="UoMP" width={68} height={68} className="object-contain" />
+                <Image src="/logo.png.webp" alt="UoMP" width={68} height={68} className="object-contain w-12 h-12 sm:w-[68px] sm:h-[68px]" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <p className="text-white/50 text-xs font-semibold tracking-widest uppercase mb-1">Admin Portal</p>
-                <h1 className="text-2xl md:text-3xl font-bold text-white leading-tight">University of Makran</h1>
+                <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-white leading-tight break-words">University of Makran</h1>
                 <p className="text-white/40 text-sm mt-1 flex items-center gap-1.5">
                   <LuTrendingUp size={13} />
                   {today}
@@ -273,10 +274,10 @@ export default function Dashboard() {
               </div>
             </div>
             <a
-              href="http://localhost:3000"
+              href={FRONTEND_URL}
               target="_blank"
               rel="noreferrer"
-              className="shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-white/15 hover:bg-white/25 text-white border border-white/20 backdrop-blur-sm transition-all duration-150"
+              className="self-start sm:self-auto shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-white/15 hover:bg-white/25 text-white border border-white/20 backdrop-blur-sm transition-all duration-150"
             >
               <LuArrowRight size={16} />
               View Frontend

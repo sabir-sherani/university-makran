@@ -611,7 +611,22 @@ export default function Admission() {
       if (picRef.current) picRef.current.value = '';
     } catch (error) {
       const msg = error.response?.data?.message || 'Failed to submit application. Please try again.';
-      setErrors({ _server: msg });
+      const serverErrors = error.response?.data?.errors || {};
+      // Backend keys don't always match the frontend's field-error keys —
+      // translate the two naming schemes that differ so the existing
+      // per-field highlighting/scroll-to-error UI picks them up.
+      const mapped = {};
+      Object.entries(serverErrors).forEach(([key, val]) => {
+        const qualMatch = key.match(/^qualifications\.(\w+)\.(\w+)$/);
+        if (qualMatch) mapped[`q_${qualMatch[1]}_${qualMatch[2]}`] = val;
+        else if (key === 'profilePicture') mapped.profilePic = val;
+        else mapped[key] = val;
+      });
+      setErrors({ ...mapped, _server: msg });
+      setTimeout(() => {
+        const el = document.querySelector('[data-has-error="true"]');
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 50);
     }
     setLoading(false);
   };

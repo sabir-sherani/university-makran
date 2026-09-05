@@ -13,7 +13,7 @@ const { verifyStudentToken } = require('../middleware/auth');
 const { sendPasswordResetEmail } = require('../utils/mailer');
 const {
   registrationNo, cnic, phone, personName, dateOfBirth, email, password: passwordChain,
-  enumField, requiredString, optionalString, validate, enums,
+  enumField, requiredString, optionalString, mongoId, validate, enums,
   departmentRef, programRef, sessionRef, snapshotRefs,
 } = require('../validators');
 const { escapeRegex } = require('../utils/escapeRegex');
@@ -396,54 +396,26 @@ router.get('/challans/:id', verifyStudentToken, async (req, res) => {
   } catch (err) { res.sendServerError(err); }
 });
 
+// Matches the OngoingClass documents a student is enrolled in — id-first
+// (departmentId/sessionId), with a string-fallback for legacy classes that
+// predate those refs. Shared by GET /ongoing-classes, GET /dashboard, and
+// GET /attendance so the enrollment rule can never drift between them (hard
+// rule 1 — this used to be duplicated between the first two). Phase 6 lifted
+// the actual implementation into utils/enrollment.js so the HOD-side
+// per-student drill-down and exam-eligibility report can reuse the exact
+// same rule instead of a third hand-typed copy.
+const OngoingClass = require('../models/OngoingClass');
+const { enrolledClassFilter: myEnrolledClassFilter } = require('../utils/enrollment');
+
 // GET /api/portal/student/ongoing-classes
 // Only shows classes that match the student's department, current semester, session (batch), and time session
-const OngoingClass = require('../models/OngoingClass');
 router.get('/ongoing-classes', verifyStudentToken, async (req, res) => {
   try {
     const student = await require('../models/Student')
       .findById(req.user.id)
       .select('department departmentId program programId currentSemester session sessionId timeSession');
 
-    const f = { status: 'active' };
-    const and = [];
-
-    // Match department: prefer the official id; fall back to an exact
-    // (escaped) string match only for legacy classes with no departmentId.
-    if (student?.departmentId) {
-      and.push({ $or: [{ departmentId: student.departmentId }, {
-        departmentId: { $exists: false },
-        department: { $regex: `^${escapeRegex(student.department || '')}$`, $options: 'i' },
-      }] });
-    } else if (student?.department) {
-      and.push({ departmentId: { $exists: false }, department: { $regex: `^${escapeRegex(student.department)}$`, $options: 'i' } });
-    }
-
-    // Match semester: student.currentSemester is a Number (e.g. 1),
-    // OngoingClass.semester is a String (e.g. "Semester 1" or "1").
-    // Use word-boundary regex so "1" matches "Semester 1" but not "11" or "12".
-    if (student?.currentSemester) {
-      and.push({ semester: { $regex: `\\b${escapeRegex(String(student.currentSemester))}\\b`, $options: 'i' } });
-    }
-
-    // Match academic session (student batch year e.g. "2025-2029")
-    if (student?.sessionId) {
-      and.push({ $or: [{ sessionId: student.sessionId }, {
-        sessionId: { $exists: false },
-        academicSession: { $regex: `^${escapeRegex(student.session || '')}$`, $options: 'i' },
-      }] });
-    } else if (student?.session) {
-      and.push({ sessionId: { $exists: false }, academicSession: { $regex: `^${escapeRegex(student.session)}$`, $options: 'i' } });
-    }
-
-    // Match time session (Morning / Evening)
-    if (student?.timeSession) {
-      f.timeSession = student.timeSession;
-    }
-
-    if (and.length) f.$and = and;
-
-    const classes = await OngoingClass.find(f).sort({ createdAt: -1 });
+    const classes = await OngoingClass.find(myEnrolledClassFilter(student)).sort({ createdAt: -1 });
     res.json(classes);
   } catch (err) { res.sendServerError(err); }
 });
@@ -489,6 +461,7 @@ router.get('/dept-notices', verifyStudentToken, async (req, res) => {
 // ─── Dashboard summary ────────────────────────────────────────────────────
 const Attendance = require('../models/Attendance');
 const SemesterCourse = require('../models/SemesterCourse');
+const { overallPercent, summarizeSessions } = require('../utils/attendanceSummary');
 
 // GET /api/portal/student/dashboard — everything the portal landing page
 // needs in one call. Every derived number here (attendance %, GPA/CGPA,
@@ -504,48 +477,18 @@ router.get('/dashboard', verifyStudentToken, async (req, res) => {
     const semesterLabel = `Semester ${student.currentSemester}`;
 
     // Classes the student is currently enrolled in — same id-first,
-    // string-fallback matching used by GET /ongoing-classes.
-    const classFilter = { status: 'active' };
-    const classAnd = [];
-    if (student.departmentId) {
-      classAnd.push({ $or: [{ departmentId: student.departmentId }, {
-        departmentId: { $exists: false },
-        department: { $regex: `^${escapeRegex(student.department || '')}$`, $options: 'i' },
-      }] });
-    } else if (student.department) {
-      classAnd.push({ departmentId: { $exists: false }, department: { $regex: `^${escapeRegex(student.department)}$`, $options: 'i' } });
-    }
-    if (student.currentSemester) {
-      classAnd.push({ semester: { $regex: `\\b${escapeRegex(String(student.currentSemester))}\\b`, $options: 'i' } });
-    }
-    if (student.sessionId) {
-      classAnd.push({ $or: [{ sessionId: student.sessionId }, {
-        sessionId: { $exists: false },
-        academicSession: { $regex: `^${escapeRegex(student.session || '')}$`, $options: 'i' },
-      }] });
-    } else if (student.session) {
-      classAnd.push({ sessionId: { $exists: false }, academicSession: { $regex: `^${escapeRegex(student.session)}$`, $options: 'i' } });
-    }
-    if (student.timeSession) classFilter.timeSession = student.timeSession;
-    if (classAnd.length) classFilter.$and = classAnd;
-
-    const myClasses = await OngoingClass.find(classFilter).select('_id');
+    // string-fallback matching used by GET /ongoing-classes and GET /attendance.
+    const myClasses = await OngoingClass.find(myEnrolledClassFilter(student)).select('_id');
     const classIds = myClasses.map((c) => c._id);
 
     // Attendance % from actual session records for those classes — Present
     // and Late both count as attended, matching the definition teachers
-    // already see in their own per-class attendance report.
+    // already see in their own per-class attendance report (both now share
+    // the same calculation via utils/attendanceSummary.js).
     let attendancePercentage = null;
     if (classIds.length) {
       const sessions = await Attendance.find({ ongoingClassId: { $in: classIds } }).select('records');
-      let attended = 0, total = 0;
-      sessions.forEach((s) => {
-        const rec = s.records.find((r) => r.registrationNo === student.registrationNo);
-        if (!rec) return;
-        total += 1;
-        if (rec.status === 'Present' || rec.status === 'Late') attended += 1;
-      });
-      attendancePercentage = total > 0 ? Math.round((attended / total) * 100) : null;
+      attendancePercentage = overallPercent(sessions, student.registrationNo);
     }
 
     // Current-semester GPA + overall CGPA from finalized result sheets.
@@ -629,6 +572,190 @@ router.get('/dashboard', verifyStudentToken, async (req, res) => {
   }
 });
 
+// ─── Attendance & Attendance Corrections (Phase 5) ────────────────────────
+const DeptSetting = require('../models/DeptSetting');
+const HOD = require('../models/HOD');
+const { notify } = require('../utils/notify');
+const { logAudit } = require('../utils/audit');
+const attendanceCorrectionUpload = createUpload(
+  'portal/attendance-corrections', ['pdf', 'jpg', 'jpeg', 'png'], { limits: { fileSize: 5 * 1024 * 1024 } },
+);
+
+// GET /api/portal/student/attendance — every session across the student's
+// enrolled classes, a per-course percentage/eligibility (reusing the same
+// summarizeSessions() math the teacher's per-class report uses), and each
+// session's own correction-request status where one exists.
+router.get('/attendance', verifyStudentToken, async (req, res) => {
+  try {
+    const student = await Student.findById(req.user.id)
+      .select('department departmentId program programId currentSemester session sessionId timeSession registrationNo fullName');
+    if (!student) return res.status(404).json({ message: 'Student not found.' });
+
+    const myClasses = await OngoingClass.find(myEnrolledClassFilter(student));
+    const classIds = myClasses.map((c) => c._id);
+    const classById = new Map(myClasses.map((c) => [String(c._id), c]));
+
+    const sessions = classIds.length
+      ? await Attendance.find({ ongoingClassId: { $in: classIds } }).sort({ date: -1 })
+      : [];
+
+    // Existing correction requests for this student, keyed by the attendance
+    // session they target, so each session row can show its own status
+    // without a second round-trip from the client.
+    const crs = await CorrectionRequest.find({ student: req.user.id, type: 'attendance' })
+      .select('attendanceSession status requestedStatus reviewerComment reviewedAt');
+    const crBySession = new Map(crs.map((c) => [String(c.attendanceSession), c]));
+
+    const deptSetting = student.departmentId && student.sessionId
+      ? await DeptSetting.getOrDefault(student.departmentId, student.sessionId)
+      : { minAttendancePercent: 75 };
+    const minAttendancePercent = deptSetting.minAttendancePercent ?? 75;
+
+    const mySessions = sessions
+      .map((s) => {
+        const record = (s.records || []).find((r) => r.registrationNo === student.registrationNo);
+        if (!record) return null;
+        const cr = crBySession.get(String(s._id));
+        return {
+          _id: s._id, ongoingClassId: s.ongoingClassId, subject: s.subject, className: s.className,
+          date: s.date, isMakeup: s.isMakeup, makeupFor: s.makeupFor, kind: s.kind,
+          status: record.status,
+          correctionStatus: cr ? cr.status : null,
+          correctionRequestedStatus: cr ? cr.requestedStatus : null,
+          correctionReviewerComment: cr ? cr.reviewerComment : '',
+        };
+      })
+      .filter(Boolean);
+
+    // Per-course breakdown, grouping this student's own sessions by class and
+    // running each group through the same summarizeSessions() one-class math
+    // teacherPortal.js's /attendance/report already uses — never a second,
+    // independently-typed version of the same percentage rule.
+    const sessionsByClass = new Map();
+    for (const s of sessions) {
+      const key = String(s.ongoingClassId);
+      if (!sessionsByClass.has(key)) sessionsByClass.set(key, []);
+      sessionsByClass.get(key).push(s);
+    }
+    const courses = [];
+    for (const [key, classSessions] of sessionsByClass) {
+      const summary = summarizeSessions(classSessions).find((r) => r.registrationNo === student.registrationNo);
+      if (!summary) continue;
+      const cls = classById.get(key);
+      courses.push({
+        ongoingClassId: key, subject: cls?.subject || '', className: cls?.className || '',
+        ...summary,
+        eligible: summary.attendancePercent >= minAttendancePercent,
+      });
+    }
+
+    res.json({ minAttendancePercent, courses, sessions: mySessions });
+  } catch (err) { res.sendServerError(err); }
+});
+
+// POST /api/portal/student/attendance-corrections
+router.post('/attendance-corrections', verifyStudentToken, attendanceCorrectionUpload.array('files', 5), [
+  mongoId('attendanceSessionId'),
+  enumField('requestedStatus', enums.ATTENDANCE_STATUS),
+  requiredString('reason', { min: 20, max: 1000 }),
+  validate,
+], async (req, res) => {
+  try {
+    if (!req.files || !req.files.length) {
+      return res.status(400).json({ message: 'At least one supporting document is required.' });
+    }
+
+    const student = await Student.findById(req.user.id);
+    if (!student) return res.status(404).json({ message: 'Student not found.' });
+
+    const session = await Attendance.findById(req.body.attendanceSessionId);
+    if (!session) return res.status(404).json({ message: 'Attendance session not found.' });
+
+    // The session must actually contain this student — prevents a student
+    // filing a correction for a class/session they aren't recorded in, or on
+    // behalf of another student's registrationNo.
+    const record = (session.records || []).find((r) => r.registrationNo === student.registrationNo);
+    if (!record) return res.status(403).json({ message: 'You are not recorded in this attendance session.' });
+
+    const deptSetting = student.departmentId && student.sessionId
+      ? await DeptSetting.getOrDefault(student.departmentId, student.sessionId)
+      : { attendanceCorrectionWindowDays: 14 };
+    const windowDays = deptSetting.attendanceCorrectionWindowDays || 14;
+    const deadline = new Date(session.date);
+    deadline.setUTCDate(deadline.getUTCDate() + windowDays);
+    if (Date.now() > deadline.getTime()) {
+      return res.status(400).json({ message: `The correction window for this session has closed (${windowDays} days from the class date).` });
+    }
+
+    const existingPending = await CorrectionRequest.findOne({
+      type: 'attendance', attendanceSession: session._id, student: student._id, status: 'pending',
+    });
+    if (existingPending) return res.status(400).json({ message: 'You already have a pending correction request for this session.' });
+
+    const attachments = req.files.map((f) => ({ fileUrl: f.path, fileName: f.originalname, uploadedAt: new Date() }));
+
+    const cr = await new CorrectionRequest({
+      type: 'attendance',
+      student: student._id,
+      studentRegistrationNo: student.registrationNo,
+      studentName: student.fullName,
+      subject: session.subject,
+      // Snapshotted from the student, not the session, so it matches
+      // whatever string the HOD's own `{ department: req.user.department }`
+      // filter compares against unchanged.
+      department: student.department,
+      reason: req.body.reason,
+      attendanceSession: session._id,
+      timetableSlot: session.timetableSlot || undefined,
+      ongoingClassId: session.ongoingClassId,
+      classDate: session.date,
+      currentStatus: record.status,
+      requestedStatus: req.body.requestedStatus,
+      attachments,
+      status: 'pending',
+    }).save();
+
+    await logAudit(req, {
+      action: 'correctionRequest.create', entityType: 'CorrectionRequest', entityId: cr._id,
+      entityLabel: `${session.subject} — ${student.registrationNo}`,
+      after: { currentStatus: cr.currentStatus, requestedStatus: cr.requestedStatus, attachments: attachments.length },
+    });
+
+    const hod = student.departmentId
+      ? await HOD.findOne({ departmentId: student.departmentId })
+      : await HOD.findOne({ department: student.department });
+    if (hod) {
+      await notify({
+        recipientRole: 'hod', recipient: hod._id, category: 'approval', priority: 'important',
+        title: `Attendance correction request — ${session.subject}`,
+        body: `${student.fullName} (${student.registrationNo}) is requesting a change from ${record.status} to ${req.body.requestedStatus} for ${session.subject} on ${new Date(session.date).toDateString()}.`,
+        link: '/portal/hod?tab=corrections',
+        entityType: 'CorrectionRequest', entityId: cr._id,
+      });
+    }
+    if (session.teacher) {
+      await notify({
+        recipientRole: 'teacher', recipient: session.teacher, category: 'approval', priority: 'normal',
+        title: `Attendance correction requested — ${session.subject}`,
+        body: `${student.fullName} (${student.registrationNo}) has requested a change from ${record.status} to ${req.body.requestedStatus} for the ${session.subject} session on ${new Date(session.date).toDateString()}. The HOD will review this request.`,
+        link: '/portal/teacher?tab=attendance',
+        entityType: 'CorrectionRequest', entityId: cr._id,
+      });
+    }
+
+    res.status(201).json({ message: 'Correction request submitted.', request: cr });
+  } catch (err) { res.status(400).json({ message: err.message }); }
+});
+
+// GET /api/portal/student/attendance-corrections — this student's own
+// attendance-correction request history, with status and reviewer comment.
+router.get('/attendance-corrections', verifyStudentToken, async (req, res) => {
+  try {
+    const requests = await CorrectionRequest.find({ student: req.user.id, type: 'attendance' }).sort({ createdAt: -1 });
+    res.json(requests);
+  } catch (err) { res.sendServerError(err); }
+});
+
 // POST /api/portal/student/forgot-password
 router.post('/forgot-password', authLimiter, [email('email'), validate], async (req, res) => {
   try {
@@ -680,6 +807,29 @@ router.post('/reset-password', authLimiter, [
   } catch (err) {
     res.sendServerError(err);
   }
+});
+
+// ── Timetable (read-only, own class section only) ────────────────────────────
+const TimetableSlot = require('../models/TimetableSlot');
+const { buildGrid, sectionKeyFor } = require('../utils/timetableGrid');
+
+// GET /api/portal/student/timetable — resolved from the student's own
+// programId + currentSemester + timeSession -> sectionKey, scoped to their
+// own academic session so a student never sees another batch's slots even if
+// the two batches happen to share the same program/semester/time-session.
+router.get('/timetable', verifyStudentToken, async (req, res) => {
+  try {
+    const student = await Student.findById(req.user.id).select('programId currentSemester timeSession sessionId');
+    if (!student) return res.status(404).json({ message: 'Student not found.' });
+    if (!student.programId || !student.currentSemester || !student.timeSession) {
+      return res.json({ slots: [], grid: buildGrid([]) });
+    }
+    const sectionKey = sectionKeyFor({ programId: student.programId, semesterNumber: student.currentSemester, timeSession: student.timeSession });
+    const f = { sectionKey, status: 'active' };
+    if (student.sessionId) f.sessionId = student.sessionId;
+    const slots = await TimetableSlot.find(f).sort({ day: 1, startTime: 1 });
+    res.json({ slots, grid: buildGrid(slots) });
+  } catch (err) { res.sendServerError(err); }
 });
 
 module.exports = router;

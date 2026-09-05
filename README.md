@@ -182,7 +182,11 @@ MONGO_URI=mongodb://localhost:27017/university_makran
 JWT_SECRET=your_secret_key_here
 PORT=5000
 NODE_ENV=production
+JOB_SECRET=a_long_random_secret_only_your_scheduler_knows
 ```
+`JOB_SECRET` is required for the daily scheduled job (`POST /api/jobs/daily` —
+absence alerts, document reminders, etc.) — see [DEPLOYMENT.md](./DEPLOYMENT.md#8-scheduled-jobs)
+for how to generate it and wire up the scheduler that calls it.
 
 ### Frontend & Admin (.env.local)
 ```

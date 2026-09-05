@@ -4,6 +4,7 @@ import dynamic from 'next/dynamic';
 import AdminHeader from '../../components/AdminHeader';
 import RecycleBinPanel from '../../components/RecycleBinPanel';
 import axios from 'axios';
+import formatApiError from '../../utils/formatApiError';
 import { LuTrash2 } from 'react-icons/lu';
 
 // TipTap uses browser APIs — load only on client
@@ -215,7 +216,7 @@ export default function AdministrationAdmin() {
       resetForm();
       fetchDepts();
     } catch (err) {
-      setMsg(err.response?.data?.message || 'Error saving department.');
+      setMsg(formatApiError(err, 'Error saving department.'));
     }
     setSaving(false);
   }

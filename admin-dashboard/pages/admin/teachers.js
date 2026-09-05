@@ -3,6 +3,7 @@ import Head from 'next/head';
 import AdminHeader from '../../components/AdminHeader';
 import axios from 'axios';
 import { useRouter } from 'next/router';
+import formatApiError from '../../utils/formatApiError';
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
@@ -108,6 +109,11 @@ function TeacherDetailPanel({ teacher, onClose, onStatusChange }) {
   );
 }
 
+// Administrative designations (assigned to HOD/Exam/Finance staff, not
+// teachers) — excluded from the teacher designation filter for the same
+// reason they're hidden on the public teacher registration form.
+const NON_TEACHING_DESIGNATIONS = ['Head of Department', 'Examination Officer', 'Finance Officer'];
+
 const PAGE_SIZE = 20;
 
 export default function TeachersPage() {
@@ -120,6 +126,9 @@ export default function TeachersPage() {
   const [tSearch, setTSearch]     = useState('');
   const [tStatus, setTStatus]     = useState('');
   const [tDept, setTDept]         = useState('');
+  const [tDesignation, setTDesignation] = useState('');
+  const [deptOptions, setDeptOptions]             = useState([]);
+  const [designationOptions, setDesignationOptions] = useState([]);
   const [tDetail, setTDetail]     = useState(null);
   const [tActing, setTActing]     = useState(null);
   const [tPage, setTPage]         = useState(1);
@@ -133,6 +142,15 @@ export default function TeachersPage() {
     if (typeof router.query.status === 'string') setTStatus(router.query.status);
     setRouterReady(true);
   }, [router.isReady]);
+
+  // Filter dropdown options — canonical lists so every department/designation
+  // shows up regardless of what's on the current (paginated) results.
+  useEffect(() => {
+    axios.get(`${API}/lookups/departments`).then(({ data }) => setDeptOptions(data || [])).catch(() => {});
+    axios.get(`${API}/lookups/designations`).then(({ data }) => setDesignationOptions(data || [])).catch(() => {});
+  }, []);
+
+  const currentTFilters = () => ({ search: tSearch, status: tStatus, department: tDept, designation: tDesignation });
 
   // Teacher IDs state
   const [ids, setIds]             = useState([]);
@@ -153,6 +171,7 @@ export default function TeachersPage() {
       if (q.search) params.search = q.search;
       if (q.status) params.status = q.status;
       if (q.department) params.department = q.department;
+      if (q.designation) params.designation = q.designation;
       const { data } = await axios.get(`${API}/portal/admin/teachers`, { ...authHeaders(), params });
       setTeachers(data.data || []);
       setTTotal(data.total || 0);
@@ -179,13 +198,13 @@ export default function TeachersPage() {
   }, []);
 
   useEffect(() => {
-    if (routerReady) loadTeachers({ search: tSearch, status: tStatus, department: tDept }, 1);
+    if (routerReady) loadTeachers(currentTFilters(), 1);
   }, [routerReady]);
 
   useEffect(() => { loadIds(); }, [loadIds]);
 
   function tGoToPage(p) {
-    loadTeachers({ search: tSearch, status: tStatus, department: tDept }, p);
+    loadTeachers(currentTFilters(), p);
   }
 
   async function handleTStatusChange(id, status) {
@@ -194,7 +213,7 @@ export default function TeachersPage() {
       flash(`Status updated to ${status}.`);
       setTeachers(prev => prev.map(t => t._id === id ? { ...t, status } : t));
       if (tDetail?._id === id) setTDetail(p => ({ ...p, status }));
-    } catch (err) { flash(err.response?.data?.message || 'Update failed.', 'error'); }
+    } catch (err) { flash(formatApiError(err, 'Update failed.'), 'error'); }
   }
 
   async function handleTDelete(id, name) {
@@ -204,8 +223,8 @@ export default function TeachersPage() {
       await axios.delete(`${API}/portal/admin/teachers/${id}`, authHeaders());
       flash('Teacher deleted.');
       if (tDetail?._id === id) setTDetail(null);
-      loadTeachers({ search: tSearch, status: tStatus, department: tDept }, tPage);
-    } catch (err) { flash(err.response?.data?.message || 'Delete failed.', 'error'); }
+      loadTeachers(currentTFilters(), tPage);
+    } catch (err) { flash(formatApiError(err, 'Delete failed.'), 'error'); }
     setTActing(null);
   }
 
@@ -218,7 +237,7 @@ export default function TeachersPage() {
       flash(`Teacher ID "${idNew.trim()}" created.`);
       setIdNew('');
       loadIds();
-    } catch (err) { flash(err.response?.data?.message || 'Error.', 'error'); }
+    } catch (err) { flash(formatApiError(err, 'Error.'), 'error'); }
     setIdAdding(false);
   }
 
@@ -230,7 +249,7 @@ export default function TeachersPage() {
       flash('Teacher ID updated.');
       setIdEditId(null); setIdEditVal('');
       loadIds();
-    } catch (err) { flash(err.response?.data?.message || 'Error.', 'error'); }
+    } catch (err) { flash(formatApiError(err, 'Error.'), 'error'); }
     setIdSaving(false);
   }
 
@@ -240,7 +259,7 @@ export default function TeachersPage() {
       await axios.delete(`${API}/portal/admin/teacher-ids/${id}`, authHeaders());
       flash('Deleted.');
       setIds(prev => prev.filter(i => i._id !== id));
-    } catch (err) { flash(err.response?.data?.message || 'Error.', 'error'); }
+    } catch (err) { flash(formatApiError(err, 'Error.'), 'error'); }
   }
 
   const freeIds  = ids.filter(i => !i.isUsed);
@@ -277,7 +296,7 @@ export default function TeachersPage() {
           {activeTab === 'teachers' && (
             <>
               {/* Search */}
-              <form onSubmit={e => { e.preventDefault(); loadTeachers({ search: tSearch, status: tStatus, department: tDept }, 1); }}
+              <form onSubmit={e => { e.preventDefault(); loadTeachers(currentTFilters(), 1); }}
                 className="flex gap-3 mb-6 flex-wrap bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
                 <input value={tSearch} onChange={e => setTSearch(e.target.value)}
                   placeholder="Search by name, teacher ID, or email…"
@@ -290,11 +309,20 @@ export default function TeachersPage() {
                   <option value="rejected">Rejected</option>
                   <option value="suspended">Suspended</option>
                 </select>
-                <input value={tDept} onChange={e => setTDept(e.target.value)}
-                  placeholder="Department…"
-                  className="w-44 px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-500" />
+                <select value={tDept} onChange={e => setTDept(e.target.value)}
+                  className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-500">
+                  <option value="">All Departments</option>
+                  {deptOptions.map(d => <option key={d._id} value={d.name}>{d.name}</option>)}
+                </select>
+                <select value={tDesignation} onChange={e => setTDesignation(e.target.value)}
+                  className="px-4 py-2.5 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-500">
+                  <option value="">All Designations</option>
+                  {designationOptions
+                    .filter(d => !NON_TEACHING_DESIGNATIONS.includes(d.title))
+                    .map(d => <option key={d._id} value={d.title}>{d.title}</option>)}
+                </select>
                 <button type="submit" className="px-6 py-2.5 text-white font-bold rounded-xl text-sm hover:opacity-90 transition" style={{ background: '#041476' }}>Search</button>
-                <button type="button" onClick={() => { setTSearch(''); setTStatus(''); setTDept(''); loadTeachers({}, 1); }}
+                <button type="button" onClick={() => { setTSearch(''); setTStatus(''); setTDept(''); setTDesignation(''); loadTeachers({}, 1); }}
                   className="px-4 py-2.5 border border-gray-200 text-gray-600 font-medium rounded-xl text-sm hover:bg-gray-50 transition">Reset</button>
               </form>
 
@@ -302,7 +330,7 @@ export default function TeachersPage() {
               <div className="flex items-center justify-between mb-5 flex-wrap gap-2">
                 <div className="flex gap-2 flex-wrap">
                   {[['', 'All'], ['pending', 'Pending'], ['approved', 'Approved'], ['rejected', 'Rejected'], ['suspended', 'Suspended']].map(([val, lbl]) => (
-                    <button key={val} onClick={() => { setTStatus(val); loadTeachers({ search: tSearch, status: val, department: tDept }, 1); }}
+                    <button key={val} onClick={() => { setTStatus(val); loadTeachers({ ...currentTFilters(), status: val }, 1); }}
                       className={`px-4 py-1.5 rounded-full text-xs font-bold border transition ${tStatus === val ? 'text-white border-primary' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
                       style={tStatus === val ? { background: '#041476' } : {}}>
                       {lbl}
@@ -334,7 +362,7 @@ export default function TeachersPage() {
                           ))}
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-gray-50">
+                      <tbody className="divide-y divide-dashed divide-gray-200">
                         {teachers.map(t => (
                           <tr key={t._id} className="hover:bg-gray-50/50 transition-colors">
                             <td className="px-4 py-3 font-mono text-xs font-bold text-primary whitespace-nowrap" style={{ color: '#041476' }}>{t.teacherId}</td>

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import Head from 'next/head';
 import AdminHeader from '../../components/AdminHeader';
 import axios from 'axios';
+import formatApiError from '../../utils/formatApiError';
 
 const API  = process.env.NEXT_PUBLIC_API_URL;
 const BASE = API ? API.replace('/api', '') : 'http://localhost:5000';
@@ -114,7 +115,7 @@ export default function GalleryAdmin() {
       if (bulkRef.current) bulkRef.current.value = '';
       fetchItems();
     } catch (err) {
-      setBulkMsg(err.response?.data?.message || 'Error uploading photos.');
+      setBulkMsg(formatApiError(err, 'Error uploading photos.'));
     }
     setBulkSaving(false);
   }
@@ -186,7 +187,7 @@ export default function GalleryAdmin() {
       resetForm();
       fetchItems();
     } catch (err) {
-      setMsg(err.response?.data?.message || 'Error saving photo.');
+      setMsg(formatApiError(err, 'Error saving photo.'));
     }
     setSaving(false);
   }

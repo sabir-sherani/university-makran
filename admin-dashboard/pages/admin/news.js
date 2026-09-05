@@ -2,6 +2,7 @@
 import Head from 'next/head';
 import AdminHeader from '../../components/AdminHeader';
 import axios from 'axios';
+import formatApiError from '../../utils/formatApiError';
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 const BASE = API ? API.replace('/api', '') : 'http://localhost:5000';
@@ -114,7 +115,7 @@ export default function NewsAdmin() {
       resetForm();
       fetchItems();
     } catch (err) {
-      setMsg(err.response?.data?.message || 'Error saving news item.');
+      setMsg(formatApiError(err, 'Error saving news item.'));
     }
     setSaving(false);
   }

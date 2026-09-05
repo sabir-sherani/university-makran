@@ -2,6 +2,7 @@
 import Head from 'next/head';
 import AdminHeader from '../../components/AdminHeader';
 import axios from 'axios';
+import formatApiError from '../../utils/formatApiError';
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
@@ -100,7 +101,7 @@ export default function Courses() {
       const res = await axios.get(`${API}/courses?program=${selProgram}`);
       setSavedSemesters(res.data || []);
     } catch (err) {
-      setMsg(err.response?.data?.message || 'Error saving semester.');
+      setMsg(formatApiError(err, 'Error saving semester.'));
     }
     setSaving(false);
   }

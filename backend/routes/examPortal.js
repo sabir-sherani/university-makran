@@ -270,6 +270,9 @@ router.patch('/correction-requests/:id', verifyExamToken, [
 
     const cr = await CorrectionRequest.findById(req.params.id);
     if (!cr) return res.status(404).json({ message: 'Correction request not found.' });
+    // Attendance corrections (Phase 5) are reviewed by the HOD only — never
+    // by exam-section staff, even though this route otherwise handles any type.
+    if (cr.type === 'attendance') return res.status(403).json({ message: 'Attendance correction requests are reviewed by the HOD only.' });
     if (cr.status !== 'pending') return res.status(400).json({ message: 'This request has already been reviewed.' });
 
     cr.status          = status;

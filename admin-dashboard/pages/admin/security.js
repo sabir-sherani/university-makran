@@ -3,6 +3,7 @@ import Head from 'next/head';
 import Image from 'next/image';
 import AdminHeader from '../../components/AdminHeader';
 import axios from 'axios';
+import formatApiError from '../../utils/formatApiError';
 
 const API = process.env.NEXT_PUBLIC_API_URL;
 
@@ -80,7 +81,7 @@ export default function SecuritySettings() {
       setSecret(data.secret);
       setSetupStep('scan');
     } catch (err) {
-      flash(err.response?.data?.message || 'Setup failed.', 'error');
+      flash(formatApiError(err, 'Setup failed.'), 'error');
     }
   }
 
@@ -94,7 +95,7 @@ export default function SecuritySettings() {
       setStatus(s => ({ ...s, twoFactorEnabled: true, remainingRecoveryCodes: 8 }));
       flash('2FA enabled successfully! Save your recovery codes below.');
     } catch (err) {
-      flash(err.response?.data?.message || 'Verification failed.', 'error');
+      flash(formatApiError(err, 'Verification failed.'), 'error');
     }
   }
 
@@ -110,7 +111,7 @@ export default function SecuritySettings() {
       setRecoveryCodes([]);
       flash('2FA has been disabled.');
     } catch (err) {
-      flash(err.response?.data?.message || 'Failed to disable 2FA.', 'error');
+      flash(formatApiError(err, 'Failed to disable 2FA.'), 'error');
     }
     setDisabling(false);
   }
@@ -126,7 +127,7 @@ export default function SecuritySettings() {
       setStatus(s => ({ ...s, remainingRecoveryCodes: 8 }));
       flash('Recovery codes regenerated. Save them now — they won\'t be shown again.');
     } catch (err) {
-      flash(err.response?.data?.message || 'Failed to regenerate codes.', 'error');
+      flash(formatApiError(err, 'Failed to regenerate codes.'), 'error');
     }
     setRegening(false);
   }

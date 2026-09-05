@@ -3,6 +3,7 @@ import Head from 'next/head';
 import { useRouter } from 'next/router';
 import AdminHeader from '../../components/AdminHeader';
 import axios from 'axios';
+import formatApiError from '../../utils/formatApiError';
 import {
   LuCalendarRange, LuPencil, LuArchive, LuArchiveRestore,
   LuPlus, LuX, LuCheckCircle,
@@ -117,7 +118,7 @@ export default function AcademicSessions() {
       resetForm();
       fetchSessions();
     } catch (err) {
-      showFlash(err.response?.data?.message || 'Error saving academic session.', false);
+      showFlash(formatApiError(err, 'Error saving academic session.'), false);
     }
     setSaving(false);
   }
@@ -129,7 +130,7 @@ export default function AcademicSessions() {
       showFlash('Session archived.');
       fetchSessions();
     } catch (err) {
-      showFlash(err.response?.data?.message || 'Error archiving session.', false);
+      showFlash(formatApiError(err, 'Error archiving session.'), false);
     }
   }
 
@@ -139,7 +140,7 @@ export default function AcademicSessions() {
       showFlash('Session restored to active.');
       fetchSessions();
     } catch (err) {
-      showFlash(err.response?.data?.message || 'Error restoring session.', false);
+      showFlash(formatApiError(err, 'Error restoring session.'), false);
     }
   }
 

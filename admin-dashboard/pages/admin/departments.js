@@ -5,6 +5,7 @@ import { useRouter } from 'next/router';
 import AdminHeader from '../../components/AdminHeader';
 import RecycleBinPanel from '../../components/RecycleBinPanel';
 import axios from 'axios';
+import formatApiError from '../../utils/formatApiError';
 import { LuTrash2, LuPauseCircle, LuPlayCircle } from 'react-icons/lu';
 
 const API  = process.env.NEXT_PUBLIC_API_URL;
@@ -28,7 +29,7 @@ function SuspendOtpModal({ dept, action, onClose, onSuccess }) {
       await axios.post(`${API}/departments/${dept._id}/suspend-otp`, { action });
       setStep('otp');
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to send OTP. Check server email config.');
+      setError(formatApiError(err, 'Failed to send OTP. Check server email config.'));
     }
     setSending(false);
   }
@@ -42,7 +43,7 @@ function SuspendOtpModal({ dept, action, onClose, onSuccess }) {
       await axios.patch(`${API}/departments/${dept._id}/suspend`, { action, otp });
       onSuccess();
     } catch (err) {
-      setError(err.response?.data?.message || 'Verification failed.');
+      setError(formatApiError(err, 'Verification failed.'));
       setSending(false);
     }
   }
@@ -205,7 +206,7 @@ export default function DepartmentsList() {
       const res = await axios.post(`${API}/departments`, fd);
       router.push(`/admin/departments/${res.data._id}`);
     } catch (err) {
-      setMsg(err.response?.data?.message || 'Error creating department.');
+      setMsg(formatApiError(err, 'Error creating department.'));
       setCreating(false);
     }
   }

@@ -5,6 +5,9 @@ import Footer from '../../components/Footer.js';
 import HeroSection from '../../components/HeroSection.js';
 import axios from 'axios';
 import { useRouter } from 'next/router';
+import TimetableGrid from '../../components/portal/TimetableGrid.js';
+import NotificationBell from '../../components/portal/NotificationBell.js';
+import AttendanceSection from '../../components/portal/student/AttendanceSection.js';
 
 const API = process.env.NEXT_PUBLIC_API_URL; // e.g. http://localhost:5000/api
 const BASE_URL = API ? API.replace(/\/api$/, '') : '';
@@ -104,6 +107,10 @@ export default function StudentPortal() {
   const [ocClasses, setOcClasses] = useState([]);
   const [ocLoading, setOcLoading] = useState(false);
 
+  // Timetable
+  const [timetable, setTimetable] = useState({ grid: { days: [], byDay: {} } });
+  const [timetableLoading, setTimetableLoading] = useState(false);
+
   // Edit profile
   const [deptList, setDeptList] = useState([]);
   const [programList, setProgramList] = useState([]);
@@ -112,6 +119,7 @@ export default function StudentPortal() {
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [editData, setEditData] = useState({});
   const [editError, setEditError] = useState('');
+  const [editFieldErrors, setEditFieldErrors] = useState({});
   const [editSuccess, setEditSuccess] = useState('');
   const [editLoading, setEditLoading] = useState(false);
 
@@ -149,8 +157,13 @@ export default function StudentPortal() {
       .catch(() => setProgramList([]));
   }, [regData.departmentId]);
 
+  // 'register' picks the pre-login form; any other value deep-links a
+  // notification straight into a logged-in section (see NotificationBell's
+  // openNotification() — student.js's post-login nav state is activeSection,
+  // not tab).
   useEffect(() => {
-    if (router.query.tab === 'register') setTab('register');
+    if (router.query.tab === 'register') { setTab('register'); return; }
+    if (router.query.tab) setActiveSection(router.query.tab);
   }, [router.query.tab]);
 
   useEffect(() => {
@@ -161,6 +174,7 @@ export default function StudentPortal() {
       if (activeSection === 'resultCards') { fetchResultCards(); fetchTranscript(); setRcView('list'); }
       if (activeSection === 'challans') { fetchChallans(); setChnView('list'); }
       if (activeSection === 'ongoingClasses') fetchOngoingClasses();
+      if (activeSection === 'timetable') fetchTimetable();
       if (activeSection === 'deptNotices') fetchDeptNotices();
       if (activeSection === 'profile') fetchCorrectionRequests();
       if (activeSection === 'dashboard') fetchDashboard();
@@ -212,6 +226,15 @@ export default function StudentPortal() {
       setOcClasses(res.data);
     } catch { setOcClasses([]); }
     setOcLoading(false);
+  };
+
+  const fetchTimetable = async () => {
+    setTimetableLoading(true);
+    try {
+      const { data } = await axios.get(`${API}/portal/student/timetable`, authHeaders());
+      setTimetable(data);
+    } catch { setTimetable({ grid: { days: [], byDay: {} } }); }
+    setTimetableLoading(false);
   };
 
   const fetchResults = async () => {
@@ -388,13 +411,19 @@ export default function StudentPortal() {
       rollNo: student.rollNo || '',
     });
     setEditError('');
+    setEditFieldErrors({});
     setEditSuccess('');
     setIsEditingProfile(true);
   };
 
+  const editInputCls = (field) => editFieldErrors[field]
+    ? inputCls.replace('border-gray-300', 'border-red-400') + ' focus:border-red-500'
+    : inputCls;
+
   const handleUpdateProfile = async (e) => {
     e.preventDefault();
     setEditError('');
+    setEditFieldErrors({});
     setEditSuccess('');
     setEditLoading(true);
     try {
@@ -407,6 +436,7 @@ export default function StudentPortal() {
       setTimeout(() => { setIsEditingProfile(false); setEditSuccess(''); }, 1500);
     } catch (err) {
       setEditError(err.response?.data?.message || 'Update failed. Please try again.');
+      setEditFieldErrors(err.response?.data?.errors || {});
     }
     setEditLoading(false);
   };
@@ -461,6 +491,8 @@ export default function StudentPortal() {
                 { id: 'profile', label: '👤 Profile' },
                 { id: 'deptNotices', label: '📢 Dept Notices' },
                 { id: 'ongoingClasses', label: '📚 My Subjects' },
+                { id: 'timetable', label: '🗓️ Timetable' },
+                { id: 'attendance', label: '📋 Attendance' },
                 { id: 'datesheets', label: '📅 Date Sheets' },
                 { id: 'results', label: '📊 Results' },
                 { id: 'resultCards', label: '🎓 Result Cards' },
@@ -490,17 +522,58 @@ export default function StudentPortal() {
 
           {/* Main Content */}
           <main className="flex-1 p-4 lg:p-8 overflow-auto min-w-0">
-            {/* Mobile menu button */}
-            <button
-              className="lg:hidden mb-4 flex items-center gap-2 px-3 py-2 bg-white rounded-lg shadow text-sm font-medium text-gray-700 border border-gray-200"
-              onClick={() => setSidebarOpen(true)}
-            >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-              Menu
-            </button>
+            {/* Mobile menu button + notification bell */}
+            <div className="flex items-center justify-between mb-4">
+              <button
+                className="lg:hidden flex items-center gap-2 px-3 py-2 bg-white rounded-lg shadow text-sm font-medium text-gray-700 border border-gray-200"
+                onClick={() => setSidebarOpen(true)}
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+                Menu
+              </button>
+              <div className="ml-auto">
+                <NotificationBell api={API} token={token} role="student" />
+              </div>
+            </div>
             <h1 className="text-2xl font-bold text-primary mb-6">Dashboard</h1>
+
+            {/* Timetable */}
+            {activeSection === 'timetable' && (
+              <div>
+                <div className="flex flex-wrap items-center justify-between gap-3 mb-6 no-print-tt">
+                  <p className="text-gray-500 text-sm">{student.program} — Semester {student.currentSemester} ({student.timeSession || 'schedule'}).</p>
+                  {timetable.slots?.length > 0 && (
+                    <button onClick={() => window.print()} className="px-4 py-2.5 min-h-11 text-sm font-semibold rounded-xl text-white bg-primary hover:opacity-90">
+                      🖨 Print / Save PDF
+                    </button>
+                  )}
+                </div>
+                <div className="no-print-tt-header" style={{ display: 'none', marginBottom: '14px', borderBottom: '2px solid #041476', paddingBottom: '8px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#041476' }}>University of Makran, Panjgur</div>
+                  <div style={{ fontSize: '12px', color: '#FA7902', fontWeight: 600, marginTop: '4px' }}>Timetable — {student.fullName} ({student.registrationNo})</div>
+                </div>
+                <div id="student-timetable-printable">
+                  <TimetableGrid grid={timetable.grid} loading={timetableLoading} emptyLabel="No timetable has been published for your class yet." />
+                  <div className="no-print-tt-footer" style={{ display: 'none', marginTop: '16px', borderTop: '1px solid #ccc', paddingTop: '8px', textAlign: 'right', fontSize: '10px', color: '#555' }}>
+                    Generated on {new Date().toLocaleDateString('en-GB')}
+                  </div>
+                </div>
+                <style>{`
+                  @media print {
+                    @page { size: A4 landscape; margin: 10mm; }
+                    body * { visibility: hidden; }
+                    #student-timetable-printable, #student-timetable-printable *, .no-print-tt-header, .no-print-tt-header * { visibility: visible; }
+                    .no-print-tt-header, .no-print-tt-footer { display: block !important; }
+                    #student-timetable-printable { position: absolute; top: 70px; left: 0; width: 100%; }
+                    .no-print-tt { display: none !important; }
+                  }
+                `}</style>
+              </div>
+            )}
+
+            {activeSection === 'attendance' && <AttendanceSection student={student} token={token} />}
 
             {/* Dashboard overview */}
             {activeSection === 'dashboard' && (
@@ -519,12 +592,12 @@ export default function StudentPortal() {
                     {/* Stat cards */}
                     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                       {[
-                        { label: 'Attendance', value: dashboard.attendancePercentage != null ? `${dashboard.attendancePercentage}%` : 'N/A', icon: '📋', color: dashboard.attendancePercentage != null && dashboard.attendancePercentage < 75 ? 'bg-red-50 border-red-200 text-red-700' : 'bg-orange-50 border-orange-200 text-orange-700' },
+                        { label: 'Attendance', value: dashboard.attendancePercentage != null ? `${dashboard.attendancePercentage}%` : 'N/A', icon: '📋', color: dashboard.attendancePercentage != null && dashboard.attendancePercentage < 75 ? 'bg-red-50 border-red-200 text-red-700' : 'bg-orange-50 border-orange-200 text-orange-700', onClick: () => setActiveSection('attendance') },
                         { label: 'Semester GPA', value: dashboard.currentSemesterGPA != null ? dashboard.currentSemesterGPA.toFixed(2) : 'N/A', icon: '📈', color: 'bg-blue-50 border-blue-200 text-blue-700' },
                         { label: 'CGPA', value: dashboard.cgpa != null ? dashboard.cgpa.toFixed(2) + ' / 4.00' : 'N/A', icon: '🏆', color: 'bg-green-50 border-green-200 text-green-700' },
                         { label: 'Outstanding Fees', value: `Rs ${dashboard.outstandingFeeBalance.toLocaleString()}`, icon: '💳', color: dashboard.outstandingFeeBalance > 0 ? 'bg-red-50 border-red-200 text-red-700' : 'bg-green-50 border-green-200 text-green-700' },
-                      ].map(({ label, value, icon, color }) => (
-                        <div key={label} className={`border rounded-xl p-4 ${color}`}>
+                      ].map(({ label, value, icon, color, onClick }) => (
+                        <div key={label} onClick={onClick} className={`border rounded-xl p-4 ${color} ${onClick ? 'cursor-pointer hover:opacity-80' : ''}`}>
                           <p className="text-2xl mb-1">{icon}</p>
                           <p className="text-xs font-medium opacity-70 mb-0.5">{label}</p>
                           <p className="font-bold text-lg leading-tight">{value}</p>
@@ -641,65 +714,74 @@ export default function StudentPortal() {
                         <label className={labelCls}>Full Name *</label>
                         <input type="text" required value={editData.fullName}
                           onChange={(e) => setEditData({ ...editData, fullName: e.target.value })}
-                          className={inputCls} />
+                          className={editInputCls('fullName')} />
+                        {editFieldErrors.fullName && <p className="text-xs text-red-600 mt-1">{editFieldErrors.fullName}</p>}
                       </div>
                       <div>
                         <label className={labelCls}>Email Address *</label>
                         <input type="email" required value={editData.email}
                           onChange={(e) => setEditData({ ...editData, email: e.target.value })}
-                          className={inputCls} />
+                          className={editInputCls('email')} />
+                        {editFieldErrors.email && <p className="text-xs text-red-600 mt-1">{editFieldErrors.email}</p>}
                       </div>
                       <div>
                         <label className={labelCls}>Phone Number</label>
                         <input type="text" value={editData.phone}
                           onChange={(e) => setEditData({ ...editData, phone: e.target.value })}
-                          className={inputCls} placeholder="03XX-XXXXXXX" />
+                          className={editInputCls('phone')} placeholder="03XX-XXXXXXX" />
+                        {editFieldErrors.phone && <p className="text-xs text-red-600 mt-1">{editFieldErrors.phone}</p>}
                       </div>
                       <div>
                         <label className={labelCls}>CNIC</label>
                         <input type="text" value={editData.cnic}
                           onChange={(e) => setEditData({ ...editData, cnic: e.target.value })}
-                          className={inputCls} placeholder="XXXXX-XXXXXXX-X" />
+                          className={editInputCls('cnic')} placeholder="XXXXX-XXXXXXX-X" />
+                        {editFieldErrors.cnic && <p className="text-xs text-red-600 mt-1">{editFieldErrors.cnic}</p>}
                       </div>
                       <div>
                         <label className={labelCls}>Father&apos;s Name</label>
                         <input type="text" value={editData.fatherName}
                           onChange={(e) => setEditData({ ...editData, fatherName: e.target.value })}
-                          className={inputCls} />
+                          className={editInputCls('fatherName')} />
+                        {editFieldErrors.fatherName && <p className="text-xs text-red-600 mt-1">{editFieldErrors.fatherName}</p>}
                       </div>
                       <div>
                         <label className={labelCls}>Gender</label>
                         <select value={editData.gender}
                           onChange={(e) => setEditData({ ...editData, gender: e.target.value })}
-                          className={inputCls}>
+                          className={editInputCls('gender')}>
                           <option value="">Select gender</option>
                           <option>Male</option>
                           <option>Female</option>
                           <option>Other</option>
                         </select>
+                        {editFieldErrors.gender && <p className="text-xs text-red-600 mt-1">{editFieldErrors.gender}</p>}
                       </div>
                       <div>
                         <label className={labelCls}>Date of Birth</label>
                         <input type="date" value={editData.dateOfBirth}
                           onChange={(e) => setEditData({ ...editData, dateOfBirth: e.target.value })}
-                          className={inputCls} />
+                          className={editInputCls('dateOfBirth')} />
+                        {editFieldErrors.dateOfBirth && <p className="text-xs text-red-600 mt-1">{editFieldErrors.dateOfBirth}</p>}
                       </div>
                       <div>
                         <label className={labelCls}>Time Session</label>
                         <select value={editData.timeSession}
                           onChange={(e) => setEditData({ ...editData, timeSession: e.target.value })}
-                          className={inputCls}>
+                          className={editInputCls('timeSession')}>
                           <option value="">Select time session</option>
                           <option value="Morning">🌅 Morning</option>
                           <option value="Evening">🌙 Evening</option>
                         </select>
+                        {editFieldErrors.timeSession && <p className="text-xs text-red-600 mt-1">{editFieldErrors.timeSession}</p>}
                       </div>
                       <div>
                         <label className={labelCls}>Roll Number</label>
                         <input type="text" value={editData.rollNo}
                           onChange={(e) => setEditData({ ...editData, rollNo: e.target.value })}
-                          className={inputCls} placeholder="Get from your teacher or HOD" />
+                          className={editInputCls('rollNo')} placeholder="Get from your teacher or HOD" />
                         <p className="text-xs text-gray-400 mt-1">Provided by your department after enrollment.</p>
+                        {editFieldErrors.rollNo && <p className="text-xs text-red-600 mt-1">{editFieldErrors.rollNo}</p>}
                       </div>
                     </div>
                     <div>

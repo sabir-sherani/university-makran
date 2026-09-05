@@ -2,6 +2,7 @@
 import Head from 'next/head';
 import AdminHeader from '../../components/AdminHeader';
 import axios from 'axios';
+import formatApiError from '../../utils/formatApiError';
 
 const API  = process.env.NEXT_PUBLIC_API_URL;
 const BASE = API ? API.replace('/api', '') : 'http://localhost:5000';
@@ -109,7 +110,7 @@ export default function AdminAdmissions() {
       }
       resetNoticeForm(); loadNotices();
     } catch (err) {
-      setNoticeMsg(err.response?.data?.message || 'Error saving notice.');
+      setNoticeMsg(formatApiError(err, 'Error saving notice.'));
     }
     setNoticeSaving(false);
   }

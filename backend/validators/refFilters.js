@@ -7,4 +7,6 @@ module.exports = {
   SESSION_ACTIVE: { isActive: true },
   SEMESTER_ACTIVE: { isActive: true },
   DESIGNATION_ACTIVE: { isActive: true },
+  COURSE_ACTIVE: { isActive: true, deletedAt: null },
+  ROOM_ACTIVE: { isActive: true, deletedAt: null },
 };

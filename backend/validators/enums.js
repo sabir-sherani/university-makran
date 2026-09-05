@@ -9,4 +9,5 @@ module.exports = {
   STAFF_STATUS: ['active', 'inactive'], // HOD, ExaminationStaff, FinanceStaff
   ADMISSION_STATUS: ['pending', 'approved', 'rejected'],
   EMPLOYEE_STATUS: ['active', 'inactive'],
+  ATTENDANCE_STATUS: ['Present', 'Absent', 'Late', 'Excused'],
 };

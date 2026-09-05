@@ -3,6 +3,7 @@ import Head from 'next/head';
 import { useRouter } from 'next/router';
 import AdminHeader from '../../components/AdminHeader';
 import axios from 'axios';
+import formatApiError from '../../utils/formatApiError';
 import { LuFileEdit, LuX, LuCheck, LuBan } from 'react-icons/lu';
 
 const API = process.env.NEXT_PUBLIC_API_URL;
@@ -61,7 +62,7 @@ function ReviewModal({ request, onClose, onReview }) {
       await onReview(request._id, status, comment.trim());
       onClose();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to submit review.');
+      setError(formatApiError(err, 'Failed to submit review.'));
     }
     setSaving(null);
   }

@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Head from 'next/head';
+import { useRouter } from 'next/router';
 import axios from 'axios';
+import NotificationBell from '../../components/portal/NotificationBell.js';
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
@@ -59,6 +61,7 @@ const EMPTY_GEN = { studentId: '', feeStructureId: '', dueDate: '', lateFeePerDa
 function fmt(n) { return Number(n || 0).toLocaleString('en-PK', { minimumFractionDigits: 0 }); }
 
 export default function FinancePortal() {
+  const router = useRouter();
   const [tab, setTab]       = useState('login');
   const [staff, setStaff]   = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -157,6 +160,12 @@ export default function FinancePortal() {
       setTab('dashboard');
     }
   }, []);
+
+  // Lets a notification's `link` (e.g. '/portal/finance?tab=challans')
+  // deep-link straight into a section — see NotificationBell's openNotification().
+  useEffect(() => {
+    if (router.query.tab) setTab(router.query.tab);
+  }, [router.query.tab]);
 
   const loadData = useCallback(async (tok, q = {}) => {
     const t = tok || tokenRef.current;
@@ -517,16 +526,21 @@ export default function FinancePortal() {
       </aside>
 
       <main className="flex-1 p-4 lg:p-8 overflow-y-auto min-w-0">
-        {/* Mobile menu button */}
-        <button
-          className="lg:hidden mb-4 flex items-center gap-2 px-3 py-2 bg-white rounded-lg shadow text-sm font-medium text-gray-700 border border-gray-200"
-          onClick={() => setSidebarOpen(true)}
-        >
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-          </svg>
-          Menu
-        </button>
+        {/* Mobile menu button + notification bell */}
+        <div className="flex items-center justify-between mb-4">
+          <button
+            className="lg:hidden flex items-center gap-2 px-3 py-2 bg-white rounded-lg shadow text-sm font-medium text-gray-700 border border-gray-200"
+            onClick={() => setSidebarOpen(true)}
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+            Menu
+          </button>
+          <div className="ml-auto">
+            <NotificationBell api={API} token={token} role="finance" />
+          </div>
+        </div>
         <Alert type={alert.type} msg={alert.msg} />
 
         {tab === 'dashboard' && (
