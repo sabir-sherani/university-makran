@@ -5,3 +5,4 @@ node_modules/
 .env*.local
 public/uploads/
 *.log
+backend/backup-before-handover-*.json
