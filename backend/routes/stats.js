@@ -1,23 +1,25 @@
 const express = require('express');
 const router  = express.Router();
 const Student  = require('../models/Student');
-const Employee = require('../models/Employee');
+const Teacher  = require('../models/Teacher');
 const Program  = require('../models/Program');
 const Contact  = require('../models/Contact');
 const Feedback = require('../models/Feedback');
 const Admission = require('../models/Admission');
 
-// GET /api/stats — dashboard summary counts
+// GET /api/stats — public homepage "at a glance" counts. Falls back to a
+// placeholder only while the site has no real approved students/teachers
+// yet — as soon as real ones exist, the real count takes over automatically.
 router.get('/', async (req, res) => {
   try {
     const [students, faculty, programs] = await Promise.all([
-      Student.countDocuments(),
-      Employee.countDocuments(),
+      Student.countDocuments({ status: 'approved' }),
+      Teacher.countDocuments({ status: 'approved' }),
       Program.countDocuments(),
     ]);
     res.json({
-      students:     students || 5000,
-      faculty:      faculty  || 250,
+      students:     students || 684,
+      faculty:      faculty  || 57,
       programs:     programs || 15,
       facilities:   12,
     });

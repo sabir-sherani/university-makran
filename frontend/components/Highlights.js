@@ -27,17 +27,25 @@ export default function Highlights() {
   const [inView, setInView] = useState(false);
   const [programCount, setProgramCount] = useState(0);
   const [deptCount, setDeptCount] = useState(0);
+  // Placeholders match the backend's own fallback (/api/stats) so there's no
+  // visible jump once the real counts load in.
+  const [studentCount, setStudentCount] = useState(684);
+  const [facultyCount, setFacultyCount] = useState(57);
   const ref = useRef(null);
 
   useEffect(() => {
     axios.get(`${API}/programs`).then(r => setProgramCount(r.data?.length || 0)).catch(() => {});
     axios.get(`${API}/departments`).then(r => setDeptCount(r.data?.length || 0)).catch(() => {});
+    axios.get(`${API}/stats`).then(r => {
+      if (r.data?.students) setStudentCount(r.data.students);
+      if (r.data?.faculty)  setFacultyCount(r.data.faculty);
+    }).catch(() => {});
   }, []);
 
   const stats = [
     { icon: GraduationCap, end: programCount, suffix: '', label: 'Degree Programs',  desc: 'Undergraduate & postgraduate offerings' },
-    { icon: Users,         end: 2000,          suffix: '+', label: 'Enrolled Students', desc: 'Future leaders from Balochistan' },
-    { icon: Award,         end: 100,           suffix: '+', label: 'Qualified Faculty',  desc: 'Expert educators & researchers' },
+    { icon: Users,         end: studentCount, suffix: '+', label: 'Enrolled Students', desc: 'Future leaders from Balochistan' },
+    { icon: Award,         end: facultyCount, suffix: '+', label: 'Qualified Faculty',  desc: 'Expert educators & researchers' },
     { icon: BookOpen,      end: deptCount,     suffix: '', label: 'Departments',        desc: 'Across diverse disciplines' },
   ];
 

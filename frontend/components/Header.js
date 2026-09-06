@@ -75,6 +75,7 @@ export default function Header() {
         { label: 'Facilities',       href: '/facilities' },
       ],
     },
+    { label: 'Downloads',  href: '/downloads' },
     { label: 'Portal',     href: '/portal' },
     { label: 'Contact',             href: '/contact' },
   ];

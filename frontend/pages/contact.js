@@ -44,7 +44,15 @@ export default function Contact() {
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState('');
 
-  const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
+  // Keystroke-level filtering — a digit never even appears in the Name
+  // field, and a letter never appears in Phone, matching admission.js.
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    let v = value;
+    if (name === 'name')  v = v.replace(/[^a-zA-Z\s.''-]/g, '');
+    if (name === 'phone') v = v.replace(/\D/g, '').slice(0, 11);
+    setFormData({ ...formData, [name]: v });
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();

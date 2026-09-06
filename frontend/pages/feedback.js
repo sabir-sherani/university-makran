@@ -86,9 +86,13 @@ export default function FeedbackPortal() {
 
   const scrollToForm = () => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
+  // Keystroke-level filtering — a digit never even appears in the Name
+  // field, matching admission.js's pattern.
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
-    setForm(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
+    let v = type === 'checkbox' ? checked : value;
+    if (name === 'name') v = v.replace(/[^a-zA-Z\s.''-]/g, '');
+    setForm(prev => ({ ...prev, [name]: v }));
     setErrors(prev => ({ ...prev, [name]: '' }));
   };
 

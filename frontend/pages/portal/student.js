@@ -18,6 +18,19 @@ const fileUrl = (u) => u?.startsWith('http') ? u : `${BASE_URL}${u}`;
 const inputCls = 'w-full px-4 py-2 min-h-11 border border-gray-300 rounded-lg focus:outline-none focus:border-primary text-sm';
 const labelCls = 'block text-gray-700 font-semibold mb-1 text-sm';
 
+// Keystroke-level input filters for the registration form — a digit never
+// even appears in a name field, matching backend NAME_REGEX/PHONE_REGEX
+// (validators/fields.js) so nothing that gets typed can fail submit-time
+// validation on shape alone.
+const filterName   = (v) => v.replace(/[^A-Za-z .-]/g, '');
+const filterDigits = (v, max) => v.replace(/\D/g, '').slice(0, max);
+const formatCnic   = (v) => {
+  const digits = v.replace(/\D/g, '').slice(0, 13);
+  if (digits.length <= 5)  return digits;
+  if (digits.length <= 12) return `${digits.slice(0, 5)}-${digits.slice(5)}`;
+  return `${digits.slice(0, 5)}-${digits.slice(5, 12)}-${digits.slice(12)}`;
+};
+
 function Alert({ type, message }) {
   if (!message) return null;
   const colors = type === 'error'
@@ -2319,7 +2332,7 @@ export default function StudentPortal() {
                       <div>
                         <label className={labelCls}>Full Name *</label>
                         <input type="text" required value={regData.fullName}
-                          onChange={(e) => setRegData({ ...regData, fullName: e.target.value })}
+                          onChange={(e) => setRegData({ ...regData, fullName: filterName(e.target.value) })}
                           className={regInputCls('fullName')} placeholder="Your full name" />
                         {regFieldErrors.fullName && <p className="text-xs text-red-600 mt-1">{regFieldErrors.fullName}</p>}
                       </div>
@@ -2333,7 +2346,7 @@ export default function StudentPortal() {
                       <div>
                         <label className={labelCls}>Phone Number *</label>
                         <input type="text" required value={regData.phone}
-                          onChange={(e) => setRegData({ ...regData, phone: e.target.value })}
+                          onChange={(e) => setRegData({ ...regData, phone: filterDigits(e.target.value, 11) })}
                           className={regInputCls('phone')} placeholder="03XX-XXXXXXX" />
                         {regFieldErrors.phone
                           ? <p className="text-xs text-red-600 mt-1">{regFieldErrors.phone}</p>
@@ -2342,8 +2355,8 @@ export default function StudentPortal() {
                       <div>
                         <label className={labelCls}>CNIC *</label>
                         <input type="text" required value={regData.cnic}
-                          onChange={(e) => setRegData({ ...regData, cnic: e.target.value })}
-                          className={regInputCls('cnic')} placeholder="XXXXX-XXXXXXX-X" />
+                          onChange={(e) => setRegData({ ...regData, cnic: formatCnic(e.target.value) })}
+                          className={regInputCls('cnic')} placeholder="XXXXX-XXXXXXX-X" maxLength={15} />
                         {regFieldErrors.cnic
                           ? <p className="text-xs text-red-600 mt-1">{regFieldErrors.cnic}</p>
                           : <p className="text-xs text-gray-400 mt-1">Format: XXXXX-XXXXXXX-X (with dashes).</p>}
@@ -2351,7 +2364,7 @@ export default function StudentPortal() {
                       <div>
                         <label className={labelCls}>Father&apos;s Name *</label>
                         <input type="text" required value={regData.fatherName}
-                          onChange={(e) => setRegData({ ...regData, fatherName: e.target.value })}
+                          onChange={(e) => setRegData({ ...regData, fatherName: filterName(e.target.value) })}
                           className={regInputCls('fatherName')} placeholder="Father's full name" />
                         {regFieldErrors.fatherName && <p className="text-xs text-red-600 mt-1">{regFieldErrors.fatherName}</p>}
                       </div>

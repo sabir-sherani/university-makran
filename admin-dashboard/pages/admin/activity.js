@@ -38,7 +38,7 @@ function ActionBadge({ action }) {
     : isPositive
       ? 'bg-green-50 text-green-700'
       : 'bg-blue-50 text-blue-700';
-  return <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${cls}`}>{action}</span>;
+  return <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold break-words ${cls}`}>{action}</span>;
 }
 
 function DiffView({ before, after }) {
@@ -52,13 +52,13 @@ function DiffView({ before, after }) {
         const a = after ? after[k] : undefined;
         const changed = JSON.stringify(b) !== JSON.stringify(a);
         return (
-          <div key={k} className="text-xs flex gap-1.5 flex-wrap">
-            <span className="font-mono text-gray-500">{k}:</span>
+          <div key={k} className="text-xs flex gap-1.5 flex-wrap min-w-0">
+            <span className="font-mono text-gray-500 shrink-0">{k}:</span>
             {b !== undefined && (
-              <span className={changed ? 'line-through text-red-400' : 'text-gray-500'}>{String(b)}</span>
+              <span className={`break-all ${changed ? 'line-through text-red-400' : 'text-gray-500'}`}>{String(b)}</span>
             )}
             {changed && a !== undefined && <span className="text-gray-400">→</span>}
-            {a !== undefined && <span className={changed ? 'text-green-700 font-medium' : 'text-gray-500'}>{String(a)}</span>}
+            {a !== undefined && <span className={`break-all ${changed ? 'text-green-700 font-medium' : 'text-gray-500'}`}>{String(a)}</span>}
           </div>
         );
       })}
@@ -144,8 +144,8 @@ export default function ActivityLog() {
 
         {/* Filters */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 mb-6">
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-            <div className="md:col-span-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
+            <div className="sm:col-span-2 lg:col-span-2">
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Search</label>
               <div className="relative">
                 <LuSearch size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -154,7 +154,7 @@ export default function ActivityLog() {
                   className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary" />
               </div>
             </div>
-            <div>
+            <div className="min-w-0">
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Record Type</label>
               <select name="entityType" value={filters.entityType} onChange={handleFilterChange}
                 className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary">
@@ -162,7 +162,7 @@ export default function ActivityLog() {
                 {ENTITY_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
             </div>
-            <div>
+            <div className="min-w-0">
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Actor Role</label>
               <select name="actorRole" value={filters.actorRole} onChange={handleFilterChange}
                 className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary">
@@ -170,17 +170,20 @@ export default function ActivityLog() {
                 {ACTOR_ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
               </select>
             </div>
-            <div className="flex gap-2">
-              <div className="flex-1">
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">From</label>
-                <input type="date" name="from" value={filters.from} onChange={handleFilterChange}
-                  className="w-full px-2 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary" />
-              </div>
-              <div className="flex-1">
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">To</label>
-                <input type="date" name="to" value={filters.to} onChange={handleFilterChange}
-                  className="w-full px-2 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary" />
-              </div>
+            {/* From/To each get their own full grid column now — cramming two
+                native date inputs into half a column each doesn't work
+                because a date input's calendar-icon UI has a real minimum
+                width it won't shrink below in a flex child, which is what
+                pushed "To" outside the card. */}
+            <div className="min-w-0">
+              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">From</label>
+              <input type="date" name="from" value={filters.from} onChange={handleFilterChange}
+                className="w-full min-w-0 px-2 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary" />
+            </div>
+            <div className="min-w-0">
+              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">To</label>
+              <input type="date" name="to" value={filters.to} onChange={handleFilterChange}
+                className="w-full min-w-0 px-2 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary" />
             </div>
           </div>
           <div className="flex justify-between items-center mt-4">
@@ -208,36 +211,41 @@ export default function ActivityLog() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              {/* table-fixed + explicit per-column widths so a long, unbroken
+                  diff value can't blow the table wider than its container —
+                  in the default auto layout, a td's max-w is only a hint and
+                  gets ignored once content can't wrap, which is what forced
+                  horizontal scrolling on normal desktop widths before. */}
+              <table className="w-full text-sm table-fixed">
                 <thead>
                   <tr className="border-b border-gray-100 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
-                    <th className="px-5 py-3">When</th>
-                    <th className="px-5 py-3">Actor</th>
-                    <th className="px-5 py-3">Action</th>
-                    <th className="px-5 py-3">Record</th>
-                    <th className="px-5 py-3">Changes</th>
+                    <th className="px-3 py-3 w-[13%]">When</th>
+                    <th className="px-3 py-3 w-[13%]">Actor</th>
+                    <th className="px-3 py-3 w-[11%]">Action</th>
+                    <th className="px-3 py-3 w-[18%]">Record</th>
+                    <th className="px-3 py-3 w-[45%]">Changes</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {logs.map((log) => (
                     <tr key={log._id} className="hover:bg-gray-50/50 transition-colors align-top">
-                      <td className="px-5 py-3 whitespace-nowrap text-gray-500 text-xs">{formatDate(log.createdAt)}</td>
-                      <td className="px-5 py-3">
+                      <td className="px-3 py-3 text-gray-500 text-xs break-words">{formatDate(log.createdAt)}</td>
+                      <td className="px-3 py-3 break-words">
                         <p className="font-semibold text-gray-800 text-xs">{log.actorName || '—'}</p>
                         <p className="text-[11px] text-gray-400">{log.actorRole}</p>
                       </td>
-                      <td className="px-5 py-3"><ActionBadge action={log.action} /></td>
-                      <td className="px-5 py-3">
+                      <td className="px-3 py-3"><ActionBadge action={log.action} /></td>
+                      <td className="px-3 py-3">
                         <button
                           onClick={() => viewEntityHistory(log.entityType, log.entityId)}
-                          className="text-left hover:underline"
+                          className="text-left hover:underline w-full"
                           title="View full history for this record"
                         >
                           <p className="font-medium text-gray-700 text-xs">{log.entityType}</p>
-                          <p className="text-[11px] text-gray-400 truncate max-w-[160px]">{log.entityLabel || log.entityId}</p>
+                          <p className="text-[11px] text-gray-400 truncate">{log.entityLabel || log.entityId}</p>
                         </button>
                       </td>
-                      <td className="px-5 py-3 max-w-xs">
+                      <td className="px-3 py-3">
                         <DiffView before={log.before} after={log.after} />
                       </td>
                     </tr>

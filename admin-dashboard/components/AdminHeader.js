@@ -27,6 +27,7 @@ import {
   LuHistory,
   LuReceipt,
   LuCalendarRange,
+  LuDownload,
 } from 'react-icons/lu';
 
 const API = process.env.NEXT_PUBLIC_API_URL;
@@ -35,6 +36,7 @@ const NAV = [
   { label: 'Dashboard',       href: '/admin/dashboard',      Icon: LuLayoutDashboard },
   { label: 'News & Events',   href: '/admin/news',           Icon: LuNewspaper },
   { label: 'Gallery',         href: '/admin/gallery',        Icon: LuImage },
+  { label: 'Downloads',       href: '/admin/downloads',      Icon: LuDownload },
   { label: 'Admissions',      href: '/admin/admissions',     Icon: LuFileEdit },
   { label: 'Administration',  href: '/admin/administration', Icon: LuBuilding2 },
   { label: 'Departments',     href: '/admin/departments',    Icon: LuGraduationCap },

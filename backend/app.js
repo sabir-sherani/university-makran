@@ -110,6 +110,7 @@ const { router: twoFactorRouter } = require('./routes/twoFactor');
 const lookupsRouter = require('./routes/lookups');
 const notificationsRouter = require('./routes/notifications');
 const jobsRouter = require('./routes/jobs');
+const downloadsRouter = require('./routes/downloads');
 
 // Use routes
 app.use('/api/departments', departmentsRouter);
@@ -140,6 +141,7 @@ app.use('/api/2fa', twoFactorRouter);
 app.use('/api/lookups', lookupsRouter);
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/jobs', jobsRouter);
+app.use('/api/downloads', downloadsRouter);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

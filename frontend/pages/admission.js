@@ -405,6 +405,14 @@ const EMPTY_QUAL_ROW = { degreeTitle: '', passingYear: '', obtainedMarks: '', to
 const EMPTY_QUALS    = Object.fromEntries(QUAL_ROWS.map(r => [r.key, { ...EMPTY_QUAL_ROW }]));
 
 
+/* ── Fields with keystroke-level input filtering (blocks invalid
+   characters as they're typed, not just on submit) ──────────────────── */
+const NAME_ONLY_FIELDS   = ['candidateName', 'fatherName', 'city'];
+const DIGITS_ONLY_FIELDS = ['phone', 'whatsapp'];
+// Matches the charset validate() accepts for these same fields, so a value
+// that got past typing is guaranteed to also pass submit-time validation.
+const NAME_CHARS_RE = /[^a-zA-Z\s.''-]/g;
+
 /* ── Page Component ─────────────────────────────────────────────────── */
 
 export default function Admission() {
@@ -561,12 +569,21 @@ export default function Admission() {
 
   const handleChange = (e) => {
     let value = e.target.value;
+    const name = e.target.name;
     // Auto-format CNIC as user types: XXXXX-XXXXXXX-X
-    if (e.target.name === 'cnic') {
+    if (name === 'cnic') {
       const digits = value.replace(/\D/g, '').slice(0, 13);
       if (digits.length <= 5)       value = digits;
       else if (digits.length <= 12) value = `${digits.slice(0,5)}-${digits.slice(5)}`;
       else                          value = `${digits.slice(0,5)}-${digits.slice(5,12)}-${digits.slice(12)}`;
+    }
+    // Name-type fields: a digit or symbol never even appears in the box.
+    else if (NAME_ONLY_FIELDS.includes(name)) {
+      value = value.replace(NAME_CHARS_RE, '');
+    }
+    // Phone numbers: only digits, capped at 11 (matches the ^0\d{10}$ rule).
+    else if (DIGITS_ONLY_FIELDS.includes(name)) {
+      value = value.replace(/\D/g, '').slice(0, 11);
     }
     setFormData(prev => ({
       ...prev,
@@ -1050,8 +1067,8 @@ export default function Admission() {
                         { label: 'E-mail Address', name: 'email', type: 'email', placeholder: 'someone@example.com', required: true },
                         { label: 'CNIC Number', name: 'cnic', type: 'text', placeholder: '00000-0000000-0', required: true, maxLength: 15, hint: 'Format: XXXXX-XXXXXXX-X (auto-formatted)' },
                         { label: 'Date of Birth', name: 'dob', type: 'date', required: true, max: todayStr },
-                        { label: 'Phone Number', name: 'phone', type: 'tel', placeholder: '03001234567', required: true, hint: '11-digit Pakistani number starting with 0' },
-                        { label: 'WhatsApp Number', name: 'whatsapp', type: 'tel', placeholder: '03001234567', required: true, hint: '11-digit Pakistani number starting with 0' },
+                        { label: 'Phone Number', name: 'phone', type: 'tel', placeholder: '03001234567', required: true, maxLength: 11, hint: '11-digit Pakistani number starting with 0' },
+                        { label: 'WhatsApp Number', name: 'whatsapp', type: 'tel', placeholder: '03001234567', required: true, maxLength: 11, hint: '11-digit Pakistani number starting with 0' },
                         { label: 'City', name: 'city', type: 'text', placeholder: 'Your City', required: true },
                       ].map(f => (
                         <div key={f.name} data-has-error={!!errors[f.name]}>
@@ -1212,7 +1229,14 @@ export default function Admission() {
                                     type={field === 'passingYear' ? 'number' : 'text'}
                                     value={quals[row.key][field]}
                                     onChange={e => {
-                                      handleQual(row.key, field, e.target.value);
+                                      let v = e.target.value;
+                                      // Marks/CGPA: digits and at most one decimal point — no letters.
+                                      if (field === 'obtainedMarks' || field === 'totalMarks') {
+                                        v = v.replace(/[^0-9.]/g, '');
+                                        const dot = v.indexOf('.');
+                                        if (dot !== -1) v = v.slice(0, dot + 1) + v.slice(dot + 1).replace(/\./g, '');
+                                      }
+                                      handleQual(row.key, field, v);
                                       if (errors[errKey]) setErrors(p => ({ ...p, [errKey]: '' }));
                                     }}
                                     min={field === 'passingYear' ? 1980 : undefined}
