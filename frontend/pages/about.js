@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import Header from '../components/Header';
@@ -8,8 +9,26 @@ import GoalsValues from '../components/GoalsValues';
 import GovernorMessage from '../components/GovernorMessage';
 import VCMessage from '../components/VCMessage';
 import { Images } from 'lucide-react';
+import axios from 'axios';
+
+const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
 export default function About() {
+  // Same live source and placeholders as the homepage's "Why Choose UoMP"
+  // cards (components/Highlights.js) — kept in sync so both places always
+  // show the same numbers.
+  const [programCount, setProgramCount] = useState(10);
+  const [studentCount, setStudentCount] = useState(684);
+  const [facultyCount, setFacultyCount] = useState(57);
+
+  useEffect(() => {
+    axios.get(`${API}/programs`).then(r => setProgramCount(r.data?.length || 0)).catch(() => {});
+    axios.get(`${API}/stats`).then(r => {
+      if (r.data?.students) setStudentCount(r.data.students);
+      if (r.data?.faculty)  setFacultyCount(r.data.faculty);
+    }).catch(() => {});
+  }, []);
+
   return (
     <>
       <Head>
@@ -50,9 +69,9 @@ export default function About() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
             {[
               { value: '2020', label: 'Year Established' },
-              { value: '10+', label: 'Degree Programs' },
-              { value: '2,000+', label: 'Students Enrolled' },
-              { value: '100+', label: 'Qualified Faculty' },
+              { value: `${programCount}`, label: 'Degree Programs' },
+              { value: `${studentCount}+`, label: 'Students Enrolled' },
+              { value: `${facultyCount}+`, label: 'Qualified Faculty' },
             ].map(({ value, label }) => (
               <div key={label}>
                 <div className="text-2xl md:text-3xl font-bold text-white">{value}</div>
