@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
+import HeroSection from '../components/HeroSection';
 import axios from 'axios';
 
 const API_URL  = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
@@ -56,31 +57,21 @@ export default function DownloadsPage() {
 
       <Header />
 
-      {/* ── Page Hero ── */}
-      <div className="relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #041476 0%, #0a2299 60%, #1a3ab8 100%)', padding: '56px 16px 64px' }}>
-        <div style={{ position: 'absolute', width: 360, height: 360, borderRadius: '50%', background: 'rgba(255,255,255,0.04)', top: -80, right: -80 }} />
-        <div style={{ position: 'absolute', width: 200, height: 200, borderRadius: '50%', background: 'rgba(250,121,2,0.1)', bottom: -50, left: -50 }} />
-        <div className="container relative z-10 text-center">
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'rgba(250,121,2,0.18)', border: '1px solid rgba(250,121,2,0.4)', borderRadius: 999, padding: '5px 16px', marginBottom: 16 }}>
-            <span style={{ fontSize: 12, color: '#FA7902', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>University of Makran</span>
-          </div>
-          <h1 style={{ fontSize: 'clamp(2rem,4vw,3rem)', fontWeight: 800, color: '#fff', marginBottom: 12, lineHeight: 1.15 }}>Downloads</h1>
-          <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: 16, maxWidth: 500, margin: '0 auto 28px' }}>
-            Prospectuses, forms, notices and other documents — available to view or download.
-          </p>
-
-          {/* Search bar */}
-          <div style={{ maxWidth: 420, margin: '0 auto', position: 'relative' }}>
-            <svg style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.4)', pointerEvents: 'none' }} width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-              <circle cx="11" cy="11" r="8" /><path strokeLinecap="round" d="M21 21l-4.35-4.35" />
-            </svg>
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search downloads..."
-              style={{ width: '100%', padding: '12px 16px 12px 44px', borderRadius: 12, border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.1)', color: '#fff', fontSize: 14, outline: 'none', backdropFilter: 'blur(8px)' }}
-              onFocus={e => e.target.style.borderColor = 'rgba(250,121,2,0.6)'}
-              onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.2)'} />
-          </div>
+      <HeroSection
+        title="Downloads"
+        subtitle="Prospectuses, forms, notices and other documents — available to view or download."
+      >
+        {/* Search bar */}
+        <div style={{ maxWidth: 420, margin: '0 auto', position: 'relative' }}>
+          <svg style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.4)', pointerEvents: 'none' }} width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+            <circle cx="11" cy="11" r="8" /><path strokeLinecap="round" d="M21 21l-4.35-4.35" />
+          </svg>
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search downloads..."
+            style={{ width: '100%', padding: '12px 16px 12px 44px', borderRadius: 12, border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.1)', color: '#fff', fontSize: 14, outline: 'none', backdropFilter: 'blur(8px)' }}
+            onFocus={e => e.target.style.borderColor = 'rgba(250,121,2,0.6)'}
+            onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.2)'} />
         </div>
-      </div>
+      </HeroSection>
 
       {/* ── Downloads Grid ── */}
       <div style={{ background: '#f4f6fb', padding: '48px 16px 64px', minHeight: 400 }}>

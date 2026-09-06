@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import Head from 'next/head';
 import Header from '../components/Header.js';
 import Footer from '../components/Footer.js';
+import HeroSection from '../components/HeroSection.js';
 import axios from 'axios';
 
 /* ── Inline SVG components ─────────────────────────────────────────── */
@@ -661,42 +662,23 @@ export default function Admission() {
       <Header />
 
       {/* ── Hero ────────────────────────────────────────────────────── */}
-      <section className="relative bg-primary overflow-hidden">
-        <div className="absolute inset-0 pointer-events-none">
-          <svg viewBox="0 0 1440 380" preserveAspectRatio="xMidYMid slice" className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="1300" cy="-60" r="380" fill="rgba(250,121,2,0.07)" />
-            <circle cx="1200" cy="420" r="320" fill="rgba(250,121,2,0.05)" />
-            <circle cx="80" cy="380" r="260" fill="rgba(255,255,255,0.03)" />
-            <circle cx="-40" cy="-40" r="200" fill="rgba(255,255,255,0.03)" />
-            <path d="M0 280 Q360 200 720 260 Q1080 320 1440 200 L1440 380 L0 380 Z" fill="rgba(255,255,255,0.03)" />
-          </svg>
-        </div>
-        <div className="relative container py-24 flex flex-col items-center text-center text-white z-10">
-          <span className="inline-flex items-center gap-2 bg-secondary/20 border border-secondary/40 text-secondary px-5 py-1.5 rounded-full text-sm font-semibold mb-6 uppercase tracking-widest">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+      <HeroSection
+        eyebrow="Admissions Open"
+        title={<>Admissions <span style={{ color: '#FA7902' }}>{session}</span></>}
+        subtitle={`University of Makran, Panjgur invites applications from eligible candidates for undergraduate programs for the academic session ${session}.`}
+      >
+        <div className="flex flex-wrap gap-4 justify-center">
+          <a
+            href="#apply"
+            className="inline-flex items-center gap-2 bg-secondary text-white font-semibold px-8 py-3 rounded-xl hover:bg-orange-600 transition-colors shadow-lg shadow-orange-900/30"
+          >
+            Apply Now
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M5 12h14M12 5l7 7-7 7" />
             </svg>
-            Admissions Open
-          </span>
-          <h1 className="text-5xl md:text-6xl font-bold font-heading mb-5 leading-tight">
-            Admissions <span className="text-secondary">{session}</span>
-          </h1>
-          <p className="text-lg text-white/75 max-w-2xl leading-relaxed">
-            University of Makran, Panjgur invites applications from eligible candidates for undergraduate programs for the academic session {session}.
-          </p>
-          <div className="flex flex-wrap gap-4 mt-10 justify-center">
-            <a
-              href="#apply"
-              className="inline-flex items-center gap-2 bg-secondary text-white font-semibold px-8 py-3 rounded-xl hover:bg-orange-600 transition-colors shadow-lg shadow-orange-900/30"
-            >
-              Apply Now
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M5 12h14M12 5l7 7-7 7" />
-              </svg>
-            </a>
-          </div>
+          </a>
         </div>
-      </section>
+      </HeroSection>
 
       {/* ── How to Apply ────────────────────────────────────────────── */}
       <section className="py-16 bg-white">

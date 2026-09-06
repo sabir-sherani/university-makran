@@ -3,6 +3,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
+import HeroSection from '../components/HeroSection';
 import ProgramCard from '../components/ProgramCard';
 import axios from 'axios';
 import { BookOpen, FlaskConical, Palette, Search, ArrowRight } from 'lucide-react';
@@ -48,48 +49,35 @@ export default function Programs() {
 
       <Header />
 
-      {/* ── Hero ── */}
-      <section className="relative overflow-hidden py-20"
-        style={{ background: 'linear-gradient(135deg, #041476 0%, #0d1e9e 55%, #FA7902 100%)' }}>
-        <div className="absolute inset-0 pointer-events-none"
-          style={{ backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.05) 1px, transparent 1px)', backgroundSize: '32px 32px' }} />
-
-        <div className="container relative z-10 text-center">
-          <div className="inline-flex items-center gap-2 rounded-full px-4 py-2 mb-5 text-xs font-bold uppercase tracking-widest text-white/60 border border-white/15"
-            style={{ background: 'rgba(255,255,255,0.07)' }}>
-            <BookOpen size={13} /> Academic Offerings
-          </div>
-          <h1 className="text-4xl lg:text-5xl font-bold text-white mb-4">Degree Programs</h1>
-          <p className="text-lg text-white/65 max-w-2xl mx-auto leading-relaxed">
-            University of Makran offers a wide range of BS (Hons) programs across Science
-            and Arts faculties — shaping the future leaders of Balochistan.
-          </p>
-
-          {/* Quick-nav cards */}
-          <div className="flex flex-col sm:flex-row gap-4 justify-center mt-10">
-            <Link href="/science-programs"
-              className="flex items-center gap-3 px-6 py-4 rounded-2xl text-white font-semibold text-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl"
-              style={{ background: 'rgba(37,99,235,0.25)', border: '1px solid rgba(37,99,235,0.4)' }}>
-              <FlaskConical size={20} />
-              <div className="text-left">
-                <div>Science Programs</div>
-                <div className="text-white/50 text-xs font-normal">{scienceCount} program{scienceCount !== 1 ? 's' : ''}</div>
-              </div>
-              <ArrowRight size={15} className="ml-auto opacity-60" />
-            </Link>
-            <Link href="/arts-programs"
-              className="flex items-center gap-3 px-6 py-4 rounded-2xl text-white font-semibold text-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl"
-              style={{ background: 'rgba(124,58,237,0.25)', border: '1px solid rgba(124,58,237,0.4)' }}>
-              <Palette size={20} />
-              <div className="text-left">
-                <div>Arts Programs</div>
-                <div className="text-white/50 text-xs font-normal">{artsCount} program{artsCount !== 1 ? 's' : ''}</div>
-              </div>
-              <ArrowRight size={15} className="ml-auto opacity-60" />
-            </Link>
-          </div>
+      <HeroSection
+        eyebrow="Academic Offerings"
+        title="Degree Programs"
+        subtitle="University of Makran offers a wide range of BS (Hons) programs across Science and Arts faculties — shaping the future leaders of Balochistan."
+      >
+        {/* Quick-nav cards */}
+        <div className="flex flex-col sm:flex-row gap-4 justify-center">
+          <Link href="/science-programs"
+            className="flex items-center gap-3 px-6 py-4 rounded-2xl text-white font-semibold text-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl"
+            style={{ background: 'rgba(37,99,235,0.25)', border: '1px solid rgba(37,99,235,0.4)' }}>
+            <FlaskConical size={20} />
+            <div className="text-left">
+              <div>Science Programs</div>
+              <div className="text-white/50 text-xs font-normal">{scienceCount} program{scienceCount !== 1 ? 's' : ''}</div>
+            </div>
+            <ArrowRight size={15} className="ml-auto opacity-60" />
+          </Link>
+          <Link href="/arts-programs"
+            className="flex items-center gap-3 px-6 py-4 rounded-2xl text-white font-semibold text-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl"
+            style={{ background: 'rgba(124,58,237,0.25)', border: '1px solid rgba(124,58,237,0.4)' }}>
+            <Palette size={20} />
+            <div className="text-left">
+              <div>Arts Programs</div>
+              <div className="text-white/50 text-xs font-normal">{artsCount} program{artsCount !== 1 ? 's' : ''}</div>
+            </div>
+            <ArrowRight size={15} className="ml-auto opacity-60" />
+          </Link>
         </div>
-      </section>
+      </HeroSection>
 
       {/* ── Programs grid ── */}
       <section className="py-16" style={{ background: '#F1F5FF' }}>
