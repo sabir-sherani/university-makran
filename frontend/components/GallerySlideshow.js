@@ -77,10 +77,11 @@ export default function GallerySlideshow() {
         </div>
 
         {/* ── Two-panel row ── */}
-        <div style={{ display: 'flex', gap: 20, alignItems: 'stretch', height: PANEL_HEIGHT }}>
+        <div className="gallery-updates-row" style={{ display: 'flex', gap: 20, alignItems: 'stretch', height: PANEL_HEIGHT }}>
 
           {/* ════════════════════════ SLIDESHOW ════════════════════════ */}
           <div
+            className="gallery-slide-panel"
             style={{ flex: 1, minWidth: 0, position: 'relative', borderRadius: 16, overflow: 'hidden', background: '#0a1020', cursor: 'pointer' }}
             onMouseEnter={stopAuto}
             onMouseLeave={() => startAuto(slides.length)}
@@ -185,7 +186,7 @@ export default function GallerySlideshow() {
           </div>
 
           {/* ════════════════════════ LATEST UPDATES ════════════════════════ */}
-          <div style={{ width: SIDEBAR_W, flexShrink: 0, height: '100%', borderRadius: 16, overflow: 'hidden', background: '#fff', display: 'flex', flexDirection: 'column', boxShadow: '0 4px 32px rgba(0,0,0,0.28)' }}>
+          <div className="gallery-updates-panel" style={{ width: SIDEBAR_W, flexShrink: 0, height: '100%', borderRadius: 16, overflow: 'hidden', background: '#fff', display: 'flex', flexDirection: 'column', boxShadow: '0 4px 32px rgba(0,0,0,0.28)' }}>
 
             {/* Header */}
             <div style={{ padding: '16px 20px', borderBottom: '2px solid #f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, background: '#fff' }}>
@@ -302,6 +303,16 @@ export default function GallerySlideshow() {
         .updates-scroll::-webkit-scrollbar-thumb:hover { background: #041476; }
         .update-row:hover { background: #f8f9ff !important; }
         .gallery-footer-btn:hover { background: #041476 !important; color: #fff !important; }
+
+        /* Below this width, the sidebar's fixed 380px + the slideshow's
+           minimum content no longer fit the container (px-4 leaves ~360px
+           on a typical phone) — stack the two panels instead of forcing a
+           horizontal overflow. */
+        @media (max-width: 860px) {
+          .gallery-updates-row { flex-direction: column !important; height: auto !important; }
+          .gallery-slide-panel { width: 100% !important; height: 320px !important; }
+          .gallery-updates-panel { width: 100% !important; height: 380px !important; }
+        }
       `}</style>
     </section>
   );
