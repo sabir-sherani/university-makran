@@ -25,7 +25,7 @@ const STATUS_BADGE = {
 };
 
 function emptyForm(tab) {
-  return { fullName: '', email: '', password: '', phone: '', cnic: '', designationId: '', departmentId: '', section: '', [tab.idField]: '' };
+  return { fullName: '', email: '', password: '', phone: '', cnic: '', departmentId: '', section: '', [tab.idField]: '' };
 }
 
 function Flash({ msg }) {
@@ -63,7 +63,6 @@ export default function StaffManagement() {
   const [showForm, setShowForm]   = useState(false);
   const [showPw, setShowPw]       = useState(false);
   const [departments, setDepartments] = useState([]);
-  const [designations, setDesignations] = useState([]);
 
   const tab = TABS.find(t => t.key === activeTab);
 
@@ -78,7 +77,6 @@ export default function StaffManagement() {
 
   useEffect(() => {
     axios.get(`${API}/lookups/departments`).then(({ data }) => setDepartments(data)).catch(() => {});
-    axios.get(`${API}/lookups/designations`).then(({ data }) => setDesignations(data)).catch(() => {});
   }, []);
 
   async function loadStaff(role, pageNum = 1) {
@@ -112,7 +110,6 @@ export default function StaffManagement() {
       password:    '',
       phone:       member.phone || '',
       cnic:        member.cnic || '',
-      designationId: member.designationId || '',
       departmentId:  member.departmentId || '',
       section:     member.section || '',
       [tab.idField]: member[tab.idField] || '',
@@ -289,24 +286,16 @@ export default function StaffManagement() {
                       className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary" />
                   </div>
 
-                  {activeTab !== 'hod' && (
+                  {/* Designation and Department are HOD-only now — Examination
+                      and Finance each have exactly one active account for the
+                      whole university (see the "already exists" checks on
+                      POST /staff/exam and POST /staff/finance), so a job-title
+                      or department picker is meaningless for those two. */}
+                  {activeTab === 'hod' && (
                     <div>
-                      <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Designation</label>
-                      <select name="designationId" value={form.designationId} onChange={handleField}
-                        className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary">
-                        <option value="">Select designation</option>
-                        {designations.map(d => <option key={d._id} value={d._id}>{d.title}</option>)}
-                      </select>
-                    </div>
-                  )}
-
-                  {(activeTab === 'hod' || activeTab === 'finance') && (
-                    <div>
-                      <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">
-                        Department {activeTab === 'hod' ? '*' : ''}
-                      </label>
+                      <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Department *</label>
                       <select name="departmentId" value={form.departmentId} onChange={handleField}
-                        required={activeTab === 'hod'}
+                        required
                         className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary">
                         <option value="">Select department</option>
                         {departments.map(d => <option key={d._id} value={d._id}>{d.name}</option>)}
