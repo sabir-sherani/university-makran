@@ -132,14 +132,43 @@ Two things people get wrong in that string:
 - Insert the database name before the `?`:
   `...mongodb.net/university_makran?retryWrites=true&w=majority`
 
-### Migrating your existing data
+### Migrating from an existing cluster
 
-If you have data in a local MongoDB, move it over from your own machine:
+Run these from your own machine, with the MongoDB Database Tools installed.
+First find out which database actually holds the collections — don't assume:
 
 ```bash
-mongodump --uri="mongodb://localhost:27017/university_makran" --out=./dump
-mongorestore --uri="<your Atlas URI>" --drop ./dump/university_makran
+mongosh "<OLD_URI>" --eval "db.adminCommand({listDatabases:1}).databases.forEach(d => print(d.name, d.sizeOnDisk))"
 ```
+
+> **If the old URI ends in `/?` with no database name**, Mongoose has been
+> writing to a database literally called `test`. Use the move as the chance to
+> give it a real name.
+
+```bash
+mongodump --uri="<OLD_URI>" --db=test --out=./dump-old
+
+# restores into a properly named database on the new cluster
+mongorestore --uri="<NEW_URI>" \
+  --nsFrom="test.*" --nsTo="university_makran.*" ./dump-old
+```
+
+If the listing already shows `university_makran`, drop the two `--ns` flags and
+use `--db=university_makran` instead. Verify before trusting it:
+
+```bash
+mongosh "<NEW_URI>" --eval "
+  const db = db.getSiblingDB('university_makran');
+  db.getCollectionNames().forEach(c => print(c, db[c].countDocuments()));
+"
+```
+
+Compare the counts against the old cluster before pointing anything at the new
+one, and keep the old cluster running for a week or two before deleting it.
+
+Finally, in Atlas: **Organization → Access Manager → Invite** a second trusted
+address. A cluster owned by one Gmail account is a single point of failure for
+the university's records.
 
 ---
 
