@@ -208,8 +208,10 @@ export default function GallerySlideshow() {
               </a>
             </div>
 
-            {/* Scrollable news list */}
-            <div className="updates-scroll" style={{ flex: 1, overflowY: 'auto' }}>
+            {/* News list — auto-scrolls bottom-to-top like a ticker once
+                there's enough content to loop; pauses on hover so a visitor
+                can actually read/click an item. */}
+            <div className="updates-scroll" style={{ flex: 1, overflow: 'hidden' }}>
               {loadingNews ? (
                 <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 18 }}>
                   {[...Array(6)].map((_, i) => (
@@ -227,14 +229,14 @@ export default function GallerySlideshow() {
                   No updates yet.
                 </div>
               ) : (
-                <div>
-                  {news.map((item) => {
+                (() => {
+                  const NewsRow = ({ item, keySuffix }) => {
                     const d     = new Date(item.date);
                     const day   = d.toLocaleDateString('en-GB', { day: '2-digit' });
                     const month = d.toLocaleDateString('en-GB', { month: 'short' });
                     return (
                       <a
-                        key={item._id}
+                        key={`${item._id}-${keySuffix}`}
                         href="/news"
                         target="_blank"
                         rel="noopener noreferrer"
@@ -263,8 +265,26 @@ export default function GallerySlideshow() {
                         </div>
                       </a>
                     );
-                  })}
-                </div>
+                  };
+
+                  // Fewer than 3 items isn't worth looping (it would just
+                  // flash the same 1-2 rows over and over) — show them static.
+                  if (news.length < 3) {
+                    return <div>{news.map((item) => <NewsRow key={item._id} item={item} keySuffix="only" />)}</div>;
+                  }
+
+                  // ~2.8s of reading time per row, duplicated so the loop from
+                  // the end of copy A back to the start of copy B is seamless
+                  // (translateY(-50%) of a doubled list = exactly one copy's
+                  // height).
+                  const duration = Math.max(14, news.length * 2.8);
+                  return (
+                    <div className="news-ticker-track" style={{ animationDuration: `${duration}s` }}>
+                      <div>{news.map((item) => <NewsRow key={`${item._id}-a`} item={item} keySuffix="a" />)}</div>
+                      <div>{news.map((item) => <NewsRow key={`${item._id}-b`} item={item} keySuffix="b" />)}</div>
+                    </div>
+                  );
+                })()
               )}
             </div>
 
@@ -293,16 +313,26 @@ export default function GallerySlideshow() {
           0%   { background-position: 200% 0; }
           100% { background-position: -200% 0; }
         }
-        .updates-scroll {
-          scrollbar-width: thin;
-          scrollbar-color: #c7d0e8 transparent;
-        }
-        .updates-scroll::-webkit-scrollbar { width: 4px; }
-        .updates-scroll::-webkit-scrollbar-track { background: transparent; }
-        .updates-scroll::-webkit-scrollbar-thumb { background: #c7d0e8; border-radius: 99px; }
-        .updates-scroll::-webkit-scrollbar-thumb:hover { background: #041476; }
         .update-row:hover { background: #f8f9ff !important; }
         .gallery-footer-btn:hover { background: #041476 !important; color: #fff !important; }
+
+        /* Ticker: the track holds the news list twice back-to-back, and
+           scrolling exactly -50% (one copy's height) loops seamlessly back
+           to an identical-looking start. Pausing on hover lets a visitor
+           actually read or click a row instead of it sliding away. */
+        @keyframes newsTickerScroll {
+          from { transform: translateY(0); }
+          to   { transform: translateY(-50%); }
+        }
+        .news-ticker-track {
+          animation-name: newsTickerScroll;
+          animation-timing-function: linear;
+          animation-iteration-count: infinite;
+        }
+        .updates-scroll:hover .news-ticker-track { animation-play-state: paused; }
+        @media (prefers-reduced-motion: reduce) {
+          .news-ticker-track { animation: none !important; }
+        }
 
         /* Below this width, the sidebar's fixed 380px + the slideshow's
            minimum content no longer fit the container (px-4 leaves ~360px
