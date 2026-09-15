@@ -924,11 +924,21 @@ export default function FinancePortal() {
               <div>
                 <style>{`
                   @media print {
-                    @page { size: A4 landscape; margin: 6mm; }
-                    html, body { height: auto !important; overflow: visible !important; }
+                    /* Zero page margin (not just small) is what stops Chrome
+                       from drawing its own date/title/URL/page-number header
+                       and footer — it only reserves that space when the page
+                       has margin to draw into. Visual spacing around the
+                       challan comes from #challan-print-area's own padding
+                       instead, not from @page margin. */
+                    @page { size: A4 landscape; margin: 0; }
                     body * { visibility: hidden !important; }
                     #challan-print-area, #challan-print-area * { visibility: visible !important; }
-                    #challan-print-area { position: absolute !important; top: 0 !important; left: 0 !important; width: 100% !important; height: auto !important; padding: 0 !important; margin: 0 !important; box-sizing: border-box !important; }
+                    /* Do NOT force html/body to their natural (auto) height
+                       here — the rest of the portal page is still full of
+                       visibility:hidden content that would otherwise get laid
+                       out at full height and paginated, producing a near-empty
+                       second page. */
+                    #challan-print-area { position: fixed !important; top: 0 !important; left: 0 !important; width: 100% !important; height: auto !important; margin: 0 !important; padding: 6mm !important; box-sizing: border-box !important; }
                     .no-print { display: none !important; }
                   }
                 `}</style>

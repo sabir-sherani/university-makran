@@ -130,7 +130,6 @@ export default function TeachersPage() {
   const [deptOptions, setDeptOptions]             = useState([]);
   const [designationOptions, setDesignationOptions] = useState([]);
   const [tDetail, setTDetail]     = useState(null);
-  const [tActing, setTActing]     = useState(null);
   const [tPage, setTPage]         = useState(1);
   const [tPages, setTPages]       = useState(1);
   const [tTotal, setTTotal]       = useState(0);
@@ -214,18 +213,6 @@ export default function TeachersPage() {
       setTeachers(prev => prev.map(t => t._id === id ? { ...t, status } : t));
       if (tDetail?._id === id) setTDetail(p => ({ ...p, status }));
     } catch (err) { flash(formatApiError(err, 'Update failed.'), 'error'); }
-  }
-
-  async function handleTDelete(id, name) {
-    if (!confirm(`Permanently delete teacher "${name}"? This cannot be undone.`)) return;
-    setTActing(id);
-    try {
-      await axios.delete(`${API}/portal/admin/teachers/${id}`, authHeaders());
-      flash('Teacher deleted.');
-      if (tDetail?._id === id) setTDetail(null);
-      loadTeachers(currentTFilters(), tPage);
-    } catch (err) { flash(formatApiError(err, 'Delete failed.'), 'error'); }
-    setTActing(null);
   }
 
   async function handleAddId(e) {
@@ -398,10 +385,6 @@ export default function TeachersPage() {
                                   <button onClick={() => handleTStatusChange(t._id, 'rejected')}
                                     className="px-3 py-1.5 text-xs font-bold rounded-lg border border-red-200 text-red-600 hover:bg-red-50 whitespace-nowrap transition">Reject</button>
                                 )}
-                                <button onClick={() => handleTDelete(t._id, t.fullName)} disabled={tActing === t._id}
-                                  className="px-3 py-1.5 text-xs font-bold rounded-lg border border-red-100 text-red-500 hover:bg-red-50 whitespace-nowrap transition disabled:opacity-50">
-                                  {tActing === t._id ? '…' : 'Delete'}
-                                </button>
                               </div>
                             </td>
                           </tr>

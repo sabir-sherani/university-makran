@@ -176,6 +176,7 @@ export default function StudentsPage() {
   const [loading, setLoading]       = useState(false);
   const [search, setSearch]         = useState('');
   const [filterStatus, setStatus]   = useState('');
+  const [showArchived, setShowArchived] = useState(false);
   const [filterDept, setDept]       = useState('');
   const [filterProgram, setFilterProgram]         = useState('');
   const [filterSemester, setFilterSemester]       = useState('');
@@ -186,7 +187,6 @@ export default function StudentsPage() {
   const [sessionOptions, setSessionOptions] = useState([]);
   const [msg, setMsg]               = useState({ text: '', type: '' });
   const [detail, setDetail]         = useState(null);
-  const [actingId, setActingId]     = useState(null);
 
   // Pagination
   const [page, setPage]   = useState(1);
@@ -236,6 +236,7 @@ export default function StudentsPage() {
   const currentFilters = () => ({
     search, status: filterStatus, department: filterDept,
     program: filterProgram, semester: filterSemester, session: filterSession, timeSession: filterTimeSession,
+    includeArchived: showArchived,
   });
 
   const load = useCallback(async (q = {}, pageNum = 1) => {
@@ -249,6 +250,7 @@ export default function StudentsPage() {
       if (q.semester) params.semester = q.semester;
       if (q.session) params.session = q.session;
       if (q.timeSession) params.timeSession = q.timeSession;
+      if (q.includeArchived) params.includeArchived = 'true';
       const { data } = await axios.get(`${API}/portal/admin/students`, { ...authHeaders(), params });
       setStudents(data.data || []);
       setTotal(data.total || 0);
@@ -278,22 +280,32 @@ export default function StudentsPage() {
     } catch (err) { flash(formatApiError(err, 'Update failed.'), 'error'); }
   }
 
+  // Archiving deactivates portal access (blocks login, kills any live
+  // session) and hides the student from the default list — but it's a soft
+  // delete: every academic/historical record stays intact and untouched,
+  // and the account can be restored later via the same toggle below.
+  async function handleArchive(id, name) {
+    if (!confirm(`Archive "${name}"? Their portal login will be disabled and they'll drop off the active list, but all their academic records stay intact. You can restore this account later.`)) return;
+    try {
+      await axios.patch(`${API}/portal/admin/students/${id}/archive`, {}, authHeaders());
+      flash('Student archived.');
+      if (detail?._id === id) setDetail(null);
+      load(currentFilters(), page);
+    } catch (err) { flash(formatApiError(err, 'Archive failed.'), 'error'); }
+  }
+
+  async function handleRestore(id, name) {
+    try {
+      await axios.patch(`${API}/portal/admin/students/${id}/restore`, {}, authHeaders());
+      flash(`"${name}" restored.`);
+      load(currentFilters(), page);
+    } catch (err) { flash(formatApiError(err, 'Restore failed.'), 'error'); }
+  }
+
   async function handleAcademicChange(id, payload) {
     const { data } = await axios.patch(`${API}/portal/admin/students/${id}/academic`, payload, authHeaders());
     setStudents(prev => prev.map(s => s._id === id ? { ...s, ...data.student } : s));
     if (detail?._id === id) setDetail(p => ({ ...p, ...data.student }));
-  }
-
-  async function handleDelete(id, name) {
-    if (!confirm(`Permanently delete student "${name}"? This cannot be undone.`)) return;
-    setActingId(id);
-    try {
-      await axios.delete(`${API}/portal/admin/students/${id}`, authHeaders());
-      flash('Student deleted.');
-      if (detail?._id === id) setDetail(null);
-      load(currentFilters(), page);
-    } catch (err) { flash(formatApiError(err, 'Delete failed.'), 'error'); }
-    setActingId(null);
   }
 
   function handleSearch(e) {
@@ -407,22 +419,30 @@ export default function StudentsPage() {
             </select>
             <button type="submit" className="px-6 py-2.5 text-white font-bold rounded-xl text-sm hover:opacity-90 transition" style={{ background: '#041476' }}>Search</button>
             <button type="button" onClick={() => {
-              setSearch(''); setStatus(''); setDept(''); setFilterProgram(''); setFilterSemester(''); setFilterSession(''); setFilterTimeSession('');
+              setSearch(''); setStatus(''); setDept(''); setFilterProgram(''); setFilterSemester(''); setFilterSession(''); setFilterTimeSession(''); setShowArchived(false);
               load({}, 1);
             }}
               className="px-4 py-2.5 border border-gray-200 text-gray-600 font-medium rounded-xl text-sm hover:bg-gray-50 transition">Reset</button>
           </form>
 
-          {/* Quick status filter pills */}
-          <div className="flex items-center justify-between mb-5 flex-wrap gap-2">
-            <div className="flex gap-2 flex-wrap">
-              {[['', 'All'], ['pending', 'Pending'], ['approved', 'Approved'], ['rejected', 'Rejected'], ['suspended', 'Suspended']].map(([val, lbl]) => (
-                <button key={val} onClick={() => { setStatus(val); load({ ...currentFilters(), status: val }, 1); }}
-                  className={`px-4 py-1.5 rounded-full text-xs font-bold border transition ${filterStatus === val ? 'text-white border-primary' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
-                  style={filterStatus === val ? { background: '#041476' } : {}}>
-                  {lbl}
-                </button>
-              ))}
+          {/* Quick status filter pills + archived toggle */}
+          <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex gap-2 flex-wrap">
+                {[['', 'All'], ['pending', 'Pending'], ['approved', 'Approved'], ['rejected', 'Rejected'], ['suspended', 'Suspended']].map(([val, lbl]) => (
+                  <button key={val} onClick={() => { setStatus(val); load({ ...currentFilters(), status: val }, 1); }}
+                    className={`px-4 py-1.5 rounded-full text-xs font-bold border transition ${filterStatus === val ? 'text-white border-primary' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+                    style={filterStatus === val ? { background: '#041476' } : {}}>
+                    {lbl}
+                  </button>
+                ))}
+              </div>
+              <label className="flex items-center gap-1.5 pl-3 border-l border-gray-200 text-xs font-semibold text-gray-600 cursor-pointer select-none">
+                <input type="checkbox" checked={showArchived}
+                  onChange={e => { setShowArchived(e.target.checked); load({ ...currentFilters(), includeArchived: e.target.checked }, 1); }}
+                  className="w-3.5 h-3.5 accent-primary" style={{ accentColor: '#041476' }} />
+                Show archived
+              </label>
             </div>
             <p className="text-xs text-gray-400">{total} student{total !== 1 ? 's' : ''} matching filters</p>
           </div>
@@ -472,30 +492,40 @@ export default function StudentsPage() {
                         </td>
                         <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{s.session || '—'}</td>
                         <td className="px-4 py-3">
-                          <span className={`px-2.5 py-1 rounded-full text-xs font-bold border capitalize ${STATUS_BADGE[s.status] || 'bg-gray-100 text-gray-600 border-gray-200'}`}>
-                            {s.status}
-                          </span>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className={`px-2.5 py-1 rounded-full text-xs font-bold border capitalize ${STATUS_BADGE[s.status] || 'bg-gray-100 text-gray-600 border-gray-200'}`}>
+                              {s.status}
+                            </span>
+                            {s.isActive === false && (
+                              <span className="px-2.5 py-1 rounded-full text-xs font-bold border bg-slate-100 text-slate-500 border-slate-200">Archived</span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex gap-1.5 flex-wrap">
                             <button onClick={() => setDetail(s)}
                               className="px-3 py-1.5 text-xs font-bold rounded-lg border border-blue-200 text-blue-700 hover:bg-blue-50 whitespace-nowrap transition">View</button>
-                            {s.status !== 'approved' && (
-                              <button onClick={() => handleStatusChange(s._id, 'approved')}
-                                className="px-3 py-1.5 text-xs font-bold rounded-lg border border-green-200 text-green-700 hover:bg-green-50 whitespace-nowrap transition">Approve</button>
+                            {s.isActive === false ? (
+                              <button onClick={() => handleRestore(s._id, s.fullName)}
+                                className="px-3 py-1.5 text-xs font-bold rounded-lg border border-blue-200 text-blue-700 hover:bg-blue-50 whitespace-nowrap transition">Restore</button>
+                            ) : (
+                              <>
+                                {s.status !== 'approved' && (
+                                  <button onClick={() => handleStatusChange(s._id, 'approved')}
+                                    className="px-3 py-1.5 text-xs font-bold rounded-lg border border-green-200 text-green-700 hover:bg-green-50 whitespace-nowrap transition">Approve</button>
+                                )}
+                                {s.status === 'approved' && (
+                                  <button onClick={() => handleStatusChange(s._id, 'suspended')}
+                                    className="px-3 py-1.5 text-xs font-bold rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 whitespace-nowrap transition">Suspend</button>
+                                )}
+                                {s.status === 'pending' && (
+                                  <button onClick={() => handleStatusChange(s._id, 'rejected')}
+                                    className="px-3 py-1.5 text-xs font-bold rounded-lg border border-red-200 text-red-600 hover:bg-red-50 whitespace-nowrap transition">Reject</button>
+                                )}
+                                <button onClick={() => handleArchive(s._id, s.fullName)}
+                                  className="px-3 py-1.5 text-xs font-bold rounded-lg border border-red-100 text-red-500 hover:bg-red-50 whitespace-nowrap transition">Archive</button>
+                              </>
                             )}
-                            {s.status === 'approved' && (
-                              <button onClick={() => handleStatusChange(s._id, 'suspended')}
-                                className="px-3 py-1.5 text-xs font-bold rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 whitespace-nowrap transition">Suspend</button>
-                            )}
-                            {s.status === 'pending' && (
-                              <button onClick={() => handleStatusChange(s._id, 'rejected')}
-                                className="px-3 py-1.5 text-xs font-bold rounded-lg border border-red-200 text-red-600 hover:bg-red-50 whitespace-nowrap transition">Reject</button>
-                            )}
-                            <button onClick={() => handleDelete(s._id, s.fullName)} disabled={actingId === s._id}
-                              className="px-3 py-1.5 text-xs font-bold rounded-lg border border-red-100 text-red-500 hover:bg-red-50 whitespace-nowrap transition disabled:opacity-50">
-                              {actingId === s._id ? '…' : 'Delete'}
-                            </button>
                           </div>
                         </td>
                       </tr>

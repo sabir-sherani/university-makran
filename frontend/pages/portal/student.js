@@ -1469,11 +1469,21 @@ export default function StudentPortal() {
                   <div>
                     <style>{`
                       @media print {
-                        @page { size: A4 landscape; margin: 6mm; }
-                        html, body { height: auto !important; overflow: visible !important; }
+                        /* Zero page margin (not just small) is what stops Chrome
+                           from drawing its own date/title/URL/page-number header
+                           and footer — it only reserves that space when the page
+                           has margin to draw into. Visual spacing around the
+                           challan comes from #student-challan-print's own
+                           padding instead, not from @page margin. */
+                        @page { size: A4 landscape; margin: 0; }
                         body * { visibility: hidden !important; }
                         #student-challan-print, #student-challan-print * { visibility: visible !important; }
-                        #student-challan-print { position: absolute !important; top: 0 !important; left: 0 !important; width: 100% !important; height: auto !important; padding: 0 !important; margin: 0 !important; box-sizing: border-box !important; }
+                        /* Do NOT force html/body to their natural (auto) height
+                           here — the rest of the portal page is still full of
+                           visibility:hidden content that would otherwise get
+                           laid out at full height and paginated, which is what
+                           produced the near-empty second page. */
+                        #student-challan-print { position: fixed !important; top: 0 !important; left: 0 !important; width: 100% !important; height: auto !important; margin: 0 !important; padding: 6mm !important; box-sizing: border-box !important; }
                         .no-print-ch { display: none !important; }
                       }
                     `}</style>

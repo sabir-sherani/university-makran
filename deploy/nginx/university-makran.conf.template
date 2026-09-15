@@ -1,0 +1,99 @@
+# ---------------------------------------------------------------------------
+# Nginx reverse proxy for the three apps.
+#
+# Do not edit the rendered file in /etc/nginx/sites-available directly — edit
+# this template and re-run deploy/render-nginx.sh, which substitutes the
+# domains and ports from deploy/deploy.env.
+#
+# These are plain HTTP blocks. `certbot --nginx` rewrites them in place to add
+# the TLS listeners and the http→https redirects, so run render-nginx.sh
+# BEFORE certbot, and re-run certbot if you ever re-render.
+# ---------------------------------------------------------------------------
+
+# Shared upgrade map, so WebSocket/SSE connections survive the proxy.
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+# --- Public website --------------------------------------------------------
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${DOMAIN} www.${DOMAIN};
+
+    # Next.js already gzips its own output, but this catches everything else.
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript
+               text/xml application/xml image/svg+xml;
+    gzip_min_length 1024;
+
+    location / {
+        proxy_pass http://127.0.0.1:${FRONTEND_PORT};
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade           $http_upgrade;
+        proxy_set_header Connection        $connection_upgrade;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+        proxy_read_timeout 60s;
+    }
+}
+
+# --- Admin dashboard -------------------------------------------------------
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${ADMIN_DOMAIN};
+
+    location / {
+        proxy_pass http://127.0.0.1:${ADMIN_PORT};
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade           $http_upgrade;
+        proxy_set_header Connection        $connection_upgrade;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+        proxy_read_timeout 60s;
+    }
+}
+
+# --- Backend API -----------------------------------------------------------
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${API_DOMAIN};
+
+    # Uploads are capped at 10MB per file by multer (utils/cloudinary.js).
+    # 12M leaves room for multipart overhead so the app returns its own JSON
+    # error instead of Nginx returning a bare 413 HTML page.
+    client_max_body_size 12M;
+
+    location / {
+        proxy_pass http://127.0.0.1:${BACKEND_PORT};
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Excel exports (exceljs) and the daily-jobs endpoint can run long.
+        proxy_read_timeout 120s;
+        proxy_send_timeout 120s;
+    }
+
+    # Locally-stored uploads, when Cloudinary is not configured. Express sets
+    # Content-Disposition: attachment and X-Content-Type-Options: nosniff on
+    # these; the proxy passes those through untouched.
+    location /uploads/ {
+        proxy_pass http://127.0.0.1:${BACKEND_PORT};
+        proxy_set_header Host              $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        expires 7d;
+        add_header Cache-Control "public";
+    }
+}

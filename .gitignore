@@ -3,6 +3,10 @@ node_modules/
 .env
 .env.local
 .env*.local
+.env.production
 public/uploads/
 *.log
 backend/backup-before-handover-*.json
+
+# Production deployment settings — server only, never committed
+deploy/deploy.env
