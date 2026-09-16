@@ -5,7 +5,7 @@ import axios from 'axios';
 import formatApiError from '../../utils/formatApiError';
 
 const API  = process.env.NEXT_PUBLIC_API_URL;
-const BASE = API ? API.replace('/api', '') : 'http://localhost:5000';
+const BASE = API ? API.replace(/\/api\/?$/, '') : 'http://localhost:5000';
 
 /* ── tiny helpers ───────────────────────────────────────────────── */
 function Msg({ text }) {

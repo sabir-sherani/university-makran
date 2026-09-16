@@ -5,7 +5,7 @@ import axios from 'axios';
 import formatApiError from '../../utils/formatApiError';
 
 const API  = process.env.NEXT_PUBLIC_API_URL;
-const BASE = API ? API.replace('/api', '') : 'http://localhost:5000';
+const BASE = API ? API.replace(/\/api\/?$/, '') : 'http://localhost:5000';
 
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const CURRENT_YEAR = new Date().getFullYear();

@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { Clock, Layers, ArrowRight, FlaskConical, Palette } from 'lucide-react';
 
-const BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api').replace('/api', '');
+const BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api').replace(/\/api\/?$/, '');
 
 const CAT_META = {
   Science: { Icon: FlaskConical, color: '#2563EB', bg: '#EFF6FF', border: '#BFDBFE', badge: 'Science' },

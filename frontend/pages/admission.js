@@ -219,7 +219,7 @@ const nextYear    = currentYear + 1;
 const session     = `${currentYear}–${nextYear}`;
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
-const BASE    = API_URL ? API_URL.replace('/api', '') : 'http://localhost:5000';
+const BASE    = API_URL ? API_URL.replace(/\/api\/?$/, '') : 'http://localhost:5000';
 
 const programs = [
   {

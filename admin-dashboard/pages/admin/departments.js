@@ -9,7 +9,7 @@ import formatApiError from '../../utils/formatApiError';
 import { LuTrash2, LuPauseCircle, LuPlayCircle } from 'react-icons/lu';
 
 const API  = process.env.NEXT_PUBLIC_API_URL;
-const BASE = API ? API.replace('/api', '') : 'http://localhost:5000';
+const BASE = API ? API.replace(/\/api\/?$/, '') : 'http://localhost:5000';
 
 // ── OTP Modal ─────────────────────────────────────────────────────────────────
 function SuspendOtpModal({ dept, action, onClose, onSuccess }) {

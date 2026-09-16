@@ -6,7 +6,7 @@ import axios from 'axios';
 import { X, ZoomIn, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const API_URL  = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
-const BASE_URL = API_URL.replace('/api', '');
+const BASE_URL = API_URL.replace(/\/api\/?$/, '');
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 

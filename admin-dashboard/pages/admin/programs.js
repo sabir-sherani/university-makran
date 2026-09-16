@@ -12,7 +12,7 @@ import {
 } from 'react-icons/lu';
 
 const API      = process.env.NEXT_PUBLIC_API_URL;
-const BASE_URL = API ? API.replace('/api', '') : '';
+const BASE_URL = API ? API.replace(/\/api\/?$/, '') : '';
 
 const CATEGORIES = [
   { value: 'Science', label: 'Science', Icon: LuFlaskConical, color: '#2563EB', bg: '#EFF6FF', border: '#BFDBFE' },

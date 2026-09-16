@@ -10,7 +10,7 @@ import formatApiError from '../../../utils/formatApiError';
 const RichText = dynamic(() => import('../../../components/RichTextEditor'), { ssr: false });
 
 const API  = process.env.NEXT_PUBLIC_API_URL;
-const BASE = API ? API.replace('/api', '') : 'http://localhost:5000';
+const BASE = API ? API.replace(/\/api\/?$/, '') : 'http://localhost:5000';
 
 // ── Blank templates ───────────────────────────────────────────────────────────
 

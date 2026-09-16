@@ -6,7 +6,7 @@ import HeroSection from '../components/HeroSection';
 import axios from 'axios';
 
 const API_URL  = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
-const BASE_URL = API_URL.replace('/api', '');
+const BASE_URL = API_URL.replace(/\/api\/?$/, '');
 
 const isPdf = (path) => !!path && path.toLowerCase().split('?')[0].endsWith('.pdf');
 const fileHref = (path) => path?.startsWith('http') ? path : `${BASE_URL}${path}`;

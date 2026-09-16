@@ -3,7 +3,7 @@ import axios from 'axios';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 const API_URL  = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
-const BASE_URL = API_URL.replace('/api', '');
+const BASE_URL = API_URL.replace(/\/api\/?$/, '');
 
 const PANEL_HEIGHT = 500; // px — both panels share this height
 const SIDEBAR_W    = 380; // px — "Latest Updates" panel width

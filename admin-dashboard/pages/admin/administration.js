@@ -11,7 +11,7 @@ import { LuTrash2 } from 'react-icons/lu';
 const RichTextEditor = dynamic(() => import('../../components/RichTextEditor'), { ssr: false });
 
 const API = process.env.NEXT_PUBLIC_API_URL;
-const BASE = API ? API.replace('/api', '') : 'http://localhost:5000';
+const BASE = API ? API.replace(/\/api\/?$/, '') : 'http://localhost:5000';
 
 function imgUrl(p) {
   if (!p) return null;

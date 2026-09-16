@@ -60,7 +60,7 @@ export default function Faculty() {
       department:  member.department?._id || member.department || '',
       photo:       null,
     });
-    const base = API.replace('/api', '');
+    const base = API.replace(/\/api\/?$/, '');
     setPhotoPreview(member.photo ? `${base}${member.photo}` : '');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
@@ -99,7 +99,7 @@ export default function Faculty() {
     } catch { alert('Error deleting.'); }
   }
 
-  const base = API.replace('/api', '');
+  const base = API.replace(/\/api\/?$/, '');
 
   return (
     <>

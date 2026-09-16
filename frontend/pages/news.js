@@ -5,7 +5,7 @@ import Footer from '../components/Footer';
 import axios from 'axios';
 
 const API_URL  = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
-const BASE_URL = API_URL.replace('/api', '');
+const BASE_URL = API_URL.replace(/\/api\/?$/, '');
 
 function getAction(item) {
   if (item.linkType === 'document' && item.document)

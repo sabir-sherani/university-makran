@@ -4,7 +4,7 @@ import AdminHeader from '../../components/AdminHeader';
 import axios from 'axios';
 
 const API  = process.env.NEXT_PUBLIC_API_URL;
-const BASE = API ? API.replace('/api', '') : 'http://localhost:5000';
+const BASE = API ? API.replace(/\/api\/?$/, '') : 'http://localhost:5000';
 
 const STATUS_STYLES = {
   pending:  'bg-yellow-100 text-yellow-800',

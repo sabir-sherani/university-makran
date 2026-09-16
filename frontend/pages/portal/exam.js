@@ -5,7 +5,7 @@ import axios from 'axios';
 import NotificationBell from '../../components/portal/NotificationBell.js';
 
 const API      = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
-const BASE_URL = API.replace('/api', '');
+const BASE_URL = API.replace(/\/api\/?$/, '');
 const fileUrl = (u) => u?.startsWith('http') ? u : `${BASE_URL}${u}`;
 
 const inputCls = 'w-full px-4 py-2.5 min-h-11 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-200 focus:border-purple-500 transition-all';
