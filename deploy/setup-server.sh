@@ -12,6 +12,15 @@ set -euo pipefail
 
 log() { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
 warn() { printf '\033[1;33m !  %s\033[0m\n' "$*"; }
+fail() { printf '\n\033[1;31mERROR: %s\033[0m\n' "$*" >&2; exit 1; }
+
+# Major version of the installed node, or 0 if there isn't one. Parsing the
+# whole first component rather than two characters, so both v8 and v22 compare
+# correctly.
+node_major() {
+  command -v node >/dev/null 2>&1 || { echo 0; return; }
+  node -v 2>/dev/null | sed 's/^v//' | cut -d. -f1
+}
 
 if [[ $EUID -ne 0 ]]; then
   echo "Run this as root:  sudo bash deploy/setup-server.sh" >&2
@@ -45,12 +54,36 @@ fi
 # --- Node 20 ---------------------------------------------------------------
 # Next 14 and Mongoose 7 both want Node 18+. Ubuntu's own repo ships an older
 # Node, so use NodeSource.
-if ! command -v node >/dev/null 2>&1 || [[ "$(node -v | cut -c2-3)" -lt 18 ]]; then
-  log "Installing Node.js 20 from NodeSource"
-  curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-  apt-get install -y nodejs
-else
+if [[ "$(node_major)" -ge 18 ]]; then
   log "Node already present: $(node -v)"
+else
+  # Three routes, tried in order. NodeSource is preferred but publishes per
+  # Ubuntu codename, so it can lag a brand-new release like 26.04 by months —
+  # in which case its script exits rather than installing anything.
+  log "Installing Node.js"
+
+  if curl -fsSL https://deb.nodesource.com/setup_20.x | bash - >/dev/null 2>&1 \
+     && apt-get install -y nodejs; then
+    log "Installed from NodeSource: $(node -v)"
+  else
+    warn "NodeSource has no packages for this Ubuntu release yet."
+    warn "Falling back to Ubuntu's own nodejs package."
+    apt-get install -y nodejs npm || true
+  fi
+
+  if [[ "$(node_major)" -lt 18 ]]; then
+    warn "Ubuntu's nodejs is missing or too old — installing the official build."
+    TAR="$(curl -fsSL https://nodejs.org/dist/latest-v20.x/ \
+            | grep -o 'node-v[0-9.]*-linux-x64\.tar\.xz' | head -1)"
+    [[ -n "$TAR" ]] || fail "Could not determine the latest Node 20 release. Check network access."
+    curl -fsSLo /tmp/node.tar.xz "https://nodejs.org/dist/latest-v20.x/$TAR"
+    tar -xJf /tmp/node.tar.xz -C /usr/local --strip-components=1
+    rm -f /tmp/node.tar.xz
+    hash -r
+  fi
+
+  [[ "$(node_major)" -ge 18 ]] || fail "Node 18+ could not be installed. Stopping before the build stage."
+  log "Node ready: $(node -v), npm $(npm -v)"
 fi
 
 # --- PM2 -------------------------------------------------------------------
