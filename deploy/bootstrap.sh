@@ -49,6 +49,26 @@ if [[ "$DRY_RUN" != "1" && $EUID -ne 0 ]]; then
   fail "Run as root:  bash deploy/bootstrap.sh"
 fi
 
+# Terminals wrap pasted text in bracketed-paste markers (ESC[200~ … ESC[201~).
+# They are invisible on screen but bash's `read` hands them to the script as
+# part of the value, so a perfectly correct connection string arrives with a
+# hidden prefix and fails every check. Windows clipboards add CR as well, and
+# people reasonably copy the whole "NAME=value" line rather than just the
+# value. Strip all of it rather than making the user fight the terminal.
+clean_paste() {
+  printf '%s' "$1" \
+    | tr -d '\r' \
+    | sed -e 's/\x1b\[[0-9?]*[~a-zA-Z]//g' \
+          -e 's/^[[:space:]]*//' \
+          -e 's/[[:space:]]*$//'
+}
+
+# Additionally drops a leading "MONGO_URI=" or bare "=" — only safe for the
+# URI, since a password could legitimately begin with uppercase text and "=".
+clean_env_value() {
+  clean_paste "$1" | sed -e 's/^[A-Za-z_][A-Za-z0-9_]*=//' -e 's/^=//'
+}
+
 cat <<BANNER
 
   University of Makran — first deployment
@@ -78,6 +98,7 @@ if [[ $KEEP_BACKEND_ENV -eq 0 ]]; then
   info "It must already contain /university_makran before the '?'."
   echo
   read -r -p "  MONGO_URI: " MONGO_URI
+  MONGO_URI="$(clean_env_value "$MONGO_URI")"
   [[ -n "$MONGO_URI" ]] || fail "MONGO_URI cannot be empty."
   case "$MONGO_URI" in
     mongodb://*|mongodb+srv://*) : ;;
@@ -94,7 +115,15 @@ if [[ $KEEP_BACKEND_ENV -eq 0 ]]; then
   info "Gmail app password for $GMAIL_USER (input is hidden; paste and press Enter)."
   read -r -s -p "  GMAIL_APP_PASSWORD: " GMAIL_APP_PASSWORD
   echo
-  [[ -n "$GMAIL_APP_PASSWORD" ]] || warn "Left blank — outgoing email will not work until you set it."
+  GMAIL_APP_PASSWORD="$(clean_paste "$GMAIL_APP_PASSWORD")"
+  if [[ -n "$GMAIL_APP_PASSWORD" ]]; then
+    # Shown as a length rather than the value, so a mangled paste is visible
+    # without putting the password on screen. A Gmail app password is 16
+    # characters, usually pasted with spaces as "abcd efgh ijkl mnop".
+    info "Received ${#GMAIL_APP_PASSWORD} characters."
+  else
+    warn "Left blank — outgoing email will not work until you set it."
+  fi
 fi
 
 # ---------------------------------------------------------------------------
