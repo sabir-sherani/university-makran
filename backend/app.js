@@ -11,6 +11,18 @@ const { sendServerError } = require('./utils/sendError');
 
 const app = express();
 
+// In production this runs behind Nginx, so every request reaches Express from
+// 127.0.0.1 and the visitor's real address arrives in the X-Forwarded-For
+// header Nginx sets. Without this, req.ip is the proxy for everyone, which
+// means express-rate-limit and the account-lockout logic treat all traffic as
+// a single user — one person hitting the login endpoint would rate-limit the
+// whole site, and failed attempts from different people would be pooled.
+//
+// The value is 1, not `true`: trust exactly one hop, the proxy we control.
+// `true` would trust the whole chain, letting a client forge an
+// X-Forwarded-For header and sidestep rate limiting entirely.
+app.set('trust proxy', 1);
+
 // Security headers. This API is consumed cross-origin by separate frontend/
 // admin-dashboard apps (and serves uploaded images to them via <img> tags),
 // so the resource policy has to allow cross-origin reads — helmet's default
