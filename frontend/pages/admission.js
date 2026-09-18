@@ -568,6 +568,16 @@ export default function Admission() {
   }, [formData.department, departmentList]);
 
 
+  // Removes a field's error entirely. Setting it to '' instead would leave the
+  // key in place, and anything counting Object.keys(errors) would still think
+  // the form had errors — which is what made the summary box appear empty.
+  const clearError = (name) => setErrors(prev => {
+    if (!(name in prev)) return prev;
+    const next = { ...prev };
+    delete next[name];
+    return next;
+  });
+
   const handleChange = (e) => {
     let value = e.target.value;
     const name = e.target.name;
@@ -592,7 +602,7 @@ export default function Admission() {
       // reset program when department changes
       ...(e.target.name === 'department' ? { program: '' } : {}),
     }));
-    if (errors[e.target.name]) setErrors(prev => ({ ...prev, [e.target.name]: '' }));
+    clearError(e.target.name);
   };
 
   const handlePic = (e) => {
@@ -909,7 +919,7 @@ export default function Admission() {
               <form onSubmit={handleSubmit} className="p-6 md:p-9 space-y-8" noValidate>
 
                 {/* ── Validation error summary ── */}
-                {Object.keys(errors).length > 0 && (
+                {Object.values(errors).some(Boolean) && (
                   <div className="flex items-start gap-3 px-5 py-4 rounded-xl border border-red-200 bg-red-50" data-has-error="true">
                     <svg className="w-5 h-5 text-red-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
@@ -953,7 +963,7 @@ export default function Admission() {
                             Department <span className="text-red-500">*</span>
                           </label>
                           <select name="department" value={formData.department}
-                            onChange={e => { handleChange(e); setErrors(p => ({ ...p, department: '' })); }}
+                            onChange={e => { handleChange(e); clearError('department'); }}
                             style={{ border: `1.5px solid ${errors.department ? '#f87171' : '#e2e8f0'}`, borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}
                             className="w-full px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-white transition-all text-gray-700">
                             <option value="">— Select Department —</option>
@@ -966,7 +976,7 @@ export default function Admission() {
                             Program <span className="text-red-500">*</span>
                           </label>
                           <select name="program" value={formData.program}
-                            onChange={e => { handleChange(e); setErrors(p => ({ ...p, program: '' })); }}
+                            onChange={e => { handleChange(e); clearError('program'); }}
                             disabled={!formData.department || programsLoading}
                             style={{ border: `1.5px solid ${errors.program ? '#f87171' : '#e2e8f0'}`, borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.05)', opacity: (!formData.department || programsLoading) ? 0.6 : 1 }}
                             className="w-full px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-white transition-all text-gray-700">
@@ -1081,7 +1091,7 @@ export default function Admission() {
                           {['Male','Female'].map(g => (
                             <label key={g} className="flex items-center gap-2.5 cursor-pointer text-sm font-medium text-gray-700">
                               <input type="radio" name="gender" value={g} checked={formData.gender === g}
-                                onChange={e => { handleChange(e); setErrors(p => ({ ...p, gender: '' })); }}
+                                onChange={e => { handleChange(e); clearError('gender'); }}
                                 className="w-4 h-4 accent-primary" />
                               {g}
                             </label>
@@ -1096,7 +1106,7 @@ export default function Admission() {
                           Nationality <span className="text-red-500">*</span>
                         </label>
                         <select name="nationality" value={formData.nationality}
-                          onChange={e => { handleChange(e); setErrors(p => ({ ...p, nationality: '' })); }}
+                          onChange={e => { handleChange(e); clearError('nationality'); }}
                           style={{ border: `1.5px solid ${errors.nationality ? '#f87171' : '#e2e8f0'}`, borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}
                           className="w-full px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-white transition-all text-gray-700">
                           <option value="">— Select Nationality —</option>
@@ -1148,7 +1158,7 @@ export default function Admission() {
                           <div className="flex-1">
                             <p className="text-xs font-semibold text-primary mb-2">Upload your photo</p>
                             <input ref={picRef} type="file" accept=".jpg,.jpeg,.png"
-                              onChange={e => { handlePic(e); setErrors(p => ({ ...p, profilePic: '' })); }}
+                              onChange={e => { handlePic(e); clearError('profilePic'); }}
                               className="w-full text-sm text-gray-600 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-primary file:text-white hover:file:opacity-90 cursor-pointer" />
                             <p className="text-xs text-gray-400 mt-1.5">JPG, JPEG or PNG · Max 5 MB</p>
                           </div>
@@ -1219,7 +1229,7 @@ export default function Admission() {
                                         if (dot !== -1) v = v.slice(0, dot + 1) + v.slice(dot + 1).replace(/\./g, '');
                                       }
                                       handleQual(row.key, field, v);
-                                      if (errors[errKey]) setErrors(p => ({ ...p, [errKey]: '' }));
+                                      clearError(errKey);
                                     }}
                                     min={field === 'passingYear' ? 1980 : undefined}
                                     max={field === 'passingYear' ? new Date().getFullYear() : undefined}
