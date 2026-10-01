@@ -2278,7 +2278,7 @@ export default function StudentPortal() {
                       onChange={(e) => setLoginData({ ...loginData, registrationNo: e.target.value })}
                       required
                       className={inputCls}
-                      placeholder="e.g. 2024-CS-001"
+                      placeholder="e.g. 2022/UOMP/CS-25/553"
                     />
                   </div>
                   <div>
@@ -2334,10 +2334,10 @@ export default function StudentPortal() {
                         <label className={labelCls}>Registration Number *</label>
                         <input type="text" required value={regData.registrationNo}
                           onChange={(e) => setRegData({ ...regData, registrationNo: e.target.value })}
-                          className={regInputCls('registrationNo')} placeholder="e.g. UOM-2024-0001" />
+                          className={regInputCls('registrationNo')} placeholder="e.g. 2022/UOMP/CS-25/553" />
                         {regFieldErrors.registrationNo
                           ? <p className="text-xs text-red-600 mt-1">{regFieldErrors.registrationNo}</p>
-                          : <p className="text-xs text-gray-400 mt-1">Format: UOM-YYYY-NNNN (year, then a 4-digit number).</p>}
+                          : <p className="text-xs text-gray-400 mt-1">Format: matric year / UOMP / department code - session year / serial. Codes: BBA, BL, BTN, CS, EDU, ENG, IR, IT, SW.</p>}
                       </div>
                       <div>
                         <label className={labelCls}>Full Name *</label>

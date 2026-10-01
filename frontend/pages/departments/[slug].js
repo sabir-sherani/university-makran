@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import Head from 'next/head';
+import { useRouter } from 'next/router';
 import Header from '../../components/Header';
 import Footer from '../../components/Footer';
 import axios from 'axios';
@@ -177,16 +178,22 @@ function StaffCard({ m, onReadMore }) {
   const photo = img(m.photo);
   return (
     <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-shadow">
-      <div className="aspect-square relative bg-gray-100 overflow-hidden">
+      {/* Fixed portrait box rather than a full-width square: in a 4-column grid
+          an aspect-square photo grew to the card's width (~300px), dwarfing the
+          HOD's 144x176. Same proportions and framing as the HOD card now. */}
+      <div className="px-4 pt-4">
         {photo ? (
-          <img src={photo} alt={m.name} className="absolute inset-0 w-full h-full object-cover object-top" />
+          <div className="w-32 h-40 rounded-xl overflow-hidden shadow-md border-4 border-white ring-2 ring-gray-100">
+            <img src={photo} alt={m.name} className="w-full h-full object-cover object-top" />
+          </div>
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-4xl font-bold" style={{ color: '#041476', background: '#f0f3ff' }}>
+          <div className="w-32 h-40 rounded-xl flex items-center justify-center text-4xl font-bold"
+            style={{ color: '#041476', background: '#f0f3ff' }}>
             {m.name?.charAt(0) || '?'}
           </div>
         )}
       </div>
-      <div className="p-4">
+      <div className="px-4 pb-4 pt-3">
         <h4 className="font-bold text-gray-900 text-sm leading-snug">{m.name}</h4>
         {m.jobTitle   && <p className="text-xs font-semibold mt-0.5" style={{ color: '#041476' }}>{m.jobTitle}</p>}
         {m.education  && <p className="text-xs text-gray-500 mt-1 flex items-center gap-1"><span>🎓</span>{m.education}</p>}
@@ -232,7 +239,33 @@ export default function DepartmentPage({ dept, suspended }) {
   }
 
   const tabs = buildTabs();
-  const [activeTab, setActiveTab] = useState(tabs[0]?.key || 'about');
+  const router = useRouter();
+
+  // The open tab lives in the URL (?tab=courses). Without this, a refresh
+  // remounts the page with fresh state and drops the reader back on About —
+  // and it also means a tab can be bookmarked or linked to directly.
+  const isTab = (key) => tabs.some((t) => t.key === key);
+  const [activeTab, setActiveTab] = useState(
+    isTab(router.query.tab) ? router.query.tab : (tabs[0]?.key || 'about')
+  );
+
+  // Back/forward buttons change the query without remounting, so follow it.
+  useEffect(() => {
+    const next = router.query.tab;
+    if (isTab(next) && next !== activeTab) setActiveTab(next);
+  }, [router.query.tab]);
+
+  // replace() rather than push(): tab switches shouldn't pile up in history,
+  // so Back still returns to wherever the visitor came from. shallow skips a
+  // needless server round-trip, scroll:false keeps their place on the page.
+  const openTab = (key) => {
+    setActiveTab(key);
+    router.replace(
+      { pathname: router.pathname, query: { ...router.query, tab: key } },
+      undefined,
+      { shallow: true, scroll: false }
+    );
+  };
   const [bioModal, setBioModal] = useState(null);
   const tabBarRef = useRef(null);
   const banner = img(dept.bannerImage);
@@ -271,7 +304,7 @@ export default function DepartmentPage({ dept, suspended }) {
               return (
                 <button
                   key={t.key}
-                  onClick={() => setActiveTab(t.key)}
+                  onClick={() => openTab(t.key)}
                   className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-150"
                   style={{
                     background:  active ? '#041476' : 'transparent',

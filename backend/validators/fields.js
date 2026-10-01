@@ -3,7 +3,21 @@
 // the field validate-if-present instead of required.
 const { body } = require('express-validator');
 
-const REGISTRATION_NO_REGEX = /^UOM-\d{4}-\d{4}$/; // e.g. UOM-2024-0001
+// Department codes that may appear in a registration number. To add a new
+// department, add its code here — nothing else in the codebase needs to change.
+// Longest first, so the alternation prefers BBA over BL when both could start a
+// match.
+const DEPARTMENT_CODES = ['BBA', 'BTN', 'EDU', 'ENG', 'BL', 'CS', 'IR', 'IT', 'SW'];
+
+// Registration numbers look like  2022/UOMP/CS-25/553
+//   2022  year the student passed matric
+//   UOMP  constant (stored uppercase — input is upper-cased before matching)
+//   CS    department code, from DEPARTMENT_CODES
+//   25    session year, two digits
+//   553   serial number
+const REGISTRATION_NO_REGEX = new RegExp(
+  `^(?:19|20)\\d{2}/UOMP/(?:${DEPARTMENT_CODES.join('|')})-\\d{2}/\\d{1,5}$`
+);
 const CNIC_REGEX = /^\d{5}-\d{7}-\d{1}$/;           // e.g. 12345-1234567-1
 const PHONE_REGEX = /^03\d{9}$/;                    // normalized: 03XXXXXXXXX (11 digits)
 const NAME_REGEX = /^[A-Za-z][A-Za-z .-]*$/; // letters, spaces, dots, hyphens (must start with a letter)
@@ -34,7 +48,7 @@ function registrationNo(field = 'registrationNo', { optional = false } = {}) {
     .trim()
     .customSanitizer((v) => (typeof v === 'string' ? v.toUpperCase() : v))
     .matches(REGISTRATION_NO_REGEX)
-    .withMessage(`${field} must be in the format UOM-YYYY-NNNN (e.g. UOM-2024-0001).`);
+    .withMessage(`${field} must look like 2022/UOMP/CS-25/553 — matric year, UOMP, department code, session year, serial.`);
 }
 
 // Canonical PREFIX-XXXX id formats for staff/teacher ids. Each allows 2-20
@@ -197,6 +211,7 @@ module.exports = {
   financeId,
   empId,
   REGISTRATION_NO_REGEX,
+  DEPARTMENT_CODES,
   CNIC_REGEX,
   PHONE_REGEX,
   NAME_REGEX,

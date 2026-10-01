@@ -6,7 +6,7 @@ const accountSecurityFields = require('./accountSecurityFields');
 const StudentSchema = new mongoose.Schema({
   registrationNo: {
     type: String, unique: true, required: true, uppercase: true, trim: true,
-    match: [REGISTRATION_NO_REGEX, 'registrationNo must be in the format UOM-YYYY-NNNN.'],
+    match: [REGISTRATION_NO_REGEX, 'registrationNo must look like 2022/UOMP/CS-25/553.'],
   },
   fullName: {
     type: String, required: true, trim: true, minlength: 3, maxlength: 60,
