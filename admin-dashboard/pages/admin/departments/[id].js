@@ -20,6 +20,12 @@ const emptyCourse     = () => ({ courseTitle: '', creditHours: '', theoryLab: ''
 const emptySemester   = () => ({ title: '', courses: [emptyCourse()] });
 const emptyProgram    = () => ({ heading: '', description: '' });
 const emptyGalleryImg = () => ({ file: null, preview: '', existingUrl: '', subtitle: '' });
+const emptyTableRow   = (cols = 0) => ({ cells: Array.from({ length: cols }, () => ''), label: '', highlight: false });
+const emptyCustomTable = () => ({
+  title: '', showSerial: true, serialLabel: 'S/N',
+  columns: ['Column 1', 'Column 2'],
+  rows: [emptyTableRow(2)],
+});
 
 const TABS = [
   { key: 'about',      label: 'About Dept',             icon: '📋' },
@@ -191,6 +197,7 @@ export default function DepartmentEditor() {
 
     courseHeading: '', courseDescription: '',
     semesters: [],
+    courseTables: [],
     degreePrograms: [],
 
     facilitiesHeading: '',
@@ -256,6 +263,23 @@ export default function DepartmentEditor() {
             })),
           })),
 
+          // Rows are rebuilt against the column count so an older record with a
+          // ragged row still lines up in the editor.
+          courseTables: (data.courseTables || []).map(t => {
+            const columns = t.columns || [];
+            return {
+              title:       t.title || '',
+              showSerial:  t.showSerial !== false,
+              serialLabel: t.serialLabel || 'S/N',
+              columns,
+              rows: (t.rows || []).map(r => ({
+                cells: Array.from({ length: columns.length }, (_, i) => r.cells?.[i] || ''),
+                label: r.label || '',
+                highlight: !!r.highlight,
+              })),
+            };
+          }),
+
           degreePrograms: (data.degreePrograms || []).map(p => ({
             _id: p._id, heading: p.heading || '', description: p.description || '',
           })),
@@ -303,6 +327,45 @@ export default function DepartmentEditor() {
       ...f, semesters: f.semesters.map((s, j) => j === si
         ? { ...s, courses: s.courses.map((c, k2) => k2 === ci ? { ...c, [k]: v } : c) }
         : s),
+    }));
+  }
+
+  // Custom tables (Course Content tab)
+  // Every change goes through mapTable so adding or removing a column always
+  // reshapes the existing rows with it — otherwise the cells would silently
+  // fall out of step with the headings.
+  function mapTable(ti, fn) {
+    setForm(f => ({ ...f, courseTables: f.courseTables.map((t, j) => (j === ti ? fn(t) : t)) }));
+  }
+  function addTable()              { setForm(f => ({ ...f, courseTables: [...f.courseTables, emptyCustomTable()] })); }
+  function removeTable(ti)         { setForm(f => ({ ...f, courseTables: f.courseTables.filter((_, j) => j !== ti) })); }
+  function updateTable(ti, k, v)   { mapTable(ti, t => ({ ...t, [k]: v })); }
+  function addColumn(ti) {
+    mapTable(ti, t => ({
+      ...t,
+      columns: [...t.columns, 'Column ' + (t.columns.length + 1)],
+      rows: t.rows.map(r => ({ ...r, cells: [...r.cells, ''] })),
+    }));
+  }
+  function removeColumn(ti, ci) {
+    mapTable(ti, t => ({
+      ...t,
+      columns: t.columns.filter((_, j) => j !== ci),
+      rows: t.rows.map(r => ({ ...r, cells: r.cells.filter((_, j) => j !== ci) })),
+    }));
+  }
+  function renameColumn(ti, ci, v) {
+    mapTable(ti, t => ({ ...t, columns: t.columns.map((c, j) => (j === ci ? v : c)) }));
+  }
+  function addTableRow(ti)         { mapTable(ti, t => ({ ...t, rows: [...t.rows, emptyTableRow(t.columns.length)] })); }
+  function removeTableRow(ti, ri)  { mapTable(ti, t => ({ ...t, rows: t.rows.filter((_, j) => j !== ri) })); }
+  function updateTableRow(ti, ri, k, v) {
+    mapTable(ti, t => ({ ...t, rows: t.rows.map((r, j) => (j === ri ? { ...r, [k]: v } : r)) }));
+  }
+  function updateCell(ti, ri, ci, v) {
+    mapTable(ti, t => ({
+      ...t,
+      rows: t.rows.map((r, j) => (j === ri ? { ...r, cells: r.cells.map((c, k) => (k === ci ? v : c)) } : r)),
     }));
   }
 
@@ -367,6 +430,11 @@ export default function DepartmentEditor() {
       fd.append('courseDescription',  form.courseDescription);
       fd.append('semestersJson',     JSON.stringify(form.semesters.map(s => ({
         title: s.title, courses: s.courses,
+      }))));
+      fd.append('courseTablesJson', JSON.stringify(form.courseTables.map(t => ({
+        title: t.title, showSerial: t.showSerial, serialLabel: t.serialLabel,
+        columns: t.columns,
+        rows: t.rows.map(r => ({ cells: r.cells, label: r.label, highlight: r.highlight })),
       }))));
       fd.append('degreeProgramsJson', JSON.stringify(form.degreePrograms.map(p => ({
         heading: p.heading, description: p.description,
@@ -802,6 +870,178 @@ export default function DepartmentEditor() {
                   </div>
                 </div>
               ))}
+
+              {/* ── Additional tables ── */}
+              <div className="pt-6 mt-2 border-t border-gray-200">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h3 className="font-semibold text-gray-700">Additional Tables</h3>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      Shown on the website underneath the semester tables. You choose the column
+                      headings, so any kind of summary table can go here.
+                    </p>
+                  </div>
+                  <AddRowBtn onClick={addTable} label="Add Table" />
+                </div>
+
+                {form.courseTables.length === 0 ? (
+                  <div className="bg-white rounded-xl border border-dashed border-gray-300 p-10 text-center mt-4">
+                    <p className="text-gray-400 text-sm">No extra tables. Click "Add Table" to create one.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-5 mt-4">
+                    {form.courseTables.map((t, ti) => (
+                      <div key={ti} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                        {/* Table title bar */}
+                        <div className="flex items-center gap-3 px-5 py-3 bg-primary text-white">
+                          <input
+                            value={t.title}
+                            onChange={e => updateTable(ti, 'title', e.target.value)}
+                            placeholder="Table heading — e.g. BS 4 Years, Courses Semester-wise"
+                            className="flex-1 bg-white/20 text-white placeholder-white/60 rounded px-3 py-1 text-sm font-medium outline-none border border-white/30 focus:border-white"
+                          />
+                          <button type="button" onClick={() => removeTable(ti)}
+                            className="text-xs bg-red-500/60 hover:bg-red-500/80 px-3 py-1 rounded font-medium transition-colors">
+                            Remove Table
+                          </button>
+                        </div>
+
+                        {/* Columns */}
+                        <div className="px-5 py-4 bg-gray-50 border-b border-gray-200">
+                          <div className="flex items-center justify-between mb-2">
+                            <FieldLabel>Column headings</FieldLabel>
+                            <button type="button" onClick={() => addColumn(ti)}
+                              className="text-xs font-semibold text-primary hover:text-primary/80">
+                              + Add Column
+                            </button>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {t.columns.map((c, ci) => (
+                              <div key={ci} className="flex items-center gap-1 bg-white border border-gray-200 rounded-lg pl-2 pr-1 py-1">
+                                <input
+                                  value={c}
+                                  onChange={e => renameColumn(ti, ci, e.target.value)}
+                                  placeholder={'Column ' + (ci + 1)}
+                                  className="text-xs outline-none w-40 text-gray-700"
+                                />
+                                <button type="button" onClick={() => removeColumn(ti, ci)}
+                                  className="text-red-400 hover:text-red-600 text-xs w-5 h-5 rounded hover:bg-red-50">
+                                  ✕
+                                </button>
+                              </div>
+                            ))}
+                            {t.columns.length === 0 && (
+                              <p className="text-xs text-gray-400 py-1">No columns yet — click "+ Add Column".</p>
+                            )}
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-4 mt-4">
+                            <label className="flex items-center gap-2 text-xs text-gray-600">
+                              <input
+                                type="checkbox"
+                                checked={t.showSerial}
+                                onChange={e => updateTable(ti, 'showSerial', e.target.checked)}
+                                className="rounded border-gray-300"
+                              />
+                              Number the rows automatically
+                            </label>
+                            {t.showSerial && (
+                              <label className="flex items-center gap-2 text-xs text-gray-600">
+                                Heading for that column:
+                                <input
+                                  value={t.serialLabel}
+                                  onChange={e => updateTable(ti, 'serialLabel', e.target.value)}
+                                  placeholder="S/N"
+                                  className="border border-gray-200 rounded px-2 py-1 w-20 outline-none focus:border-primary"
+                                />
+                              </label>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Rows */}
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="bg-gray-50 border-b border-gray-200">
+                                {t.showSerial && (
+                                  <th className="text-left px-3 py-2 font-semibold text-gray-600 w-20">
+                                    {t.serialLabel || 'S/N'}
+                                  </th>
+                                )}
+                                {t.columns.map((c, ci) => (
+                                  <th key={ci} className="text-left px-3 py-2 font-semibold text-gray-600">
+                                    {c || 'Column ' + (ci + 1)}
+                                  </th>
+                                ))}
+                                <th className="text-left px-3 py-2 font-semibold text-gray-600 w-24">Total row</th>
+                                <th className="w-8" />
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {t.rows.length === 0 ? (
+                                <tr>
+                                  <td colSpan={t.columns.length + (t.showSerial ? 3 : 2)}
+                                      className="px-3 py-3 text-center text-gray-400 text-xs">
+                                    No rows — click "+ Add Row"
+                                  </td>
+                                </tr>
+                              ) : t.rows.map((r, ri) => {
+                                const number = t.rows.slice(0, ri + 1).filter(x => !x.highlight).length;
+                                return (
+                                  <tr key={ri} className={'border-b border-gray-100 ' + (r.highlight ? 'bg-primary/5' : '')}>
+                                    {t.showSerial && (
+                                      <td className="px-3 py-1.5">
+                                        {r.highlight ? (
+                                          <input
+                                            value={r.label}
+                                            onChange={e => updateTableRow(ti, ri, 'label', e.target.value)}
+                                            placeholder="Total"
+                                            className="admin-input py-1 text-xs font-semibold"
+                                          />
+                                        ) : (
+                                          <span className="text-gray-400 text-xs">{number}</span>
+                                        )}
+                                      </td>
+                                    )}
+                                    {t.columns.map((_, ci) => (
+                                      <td key={ci} className="px-2 py-1.5">
+                                        <input
+                                          value={r.cells[ci] || ''}
+                                          onChange={e => updateCell(ti, ri, ci, e.target.value)}
+                                          className={'admin-input py-1 text-xs ' + (r.highlight ? 'font-semibold' : '')}
+                                        />
+                                      </td>
+                                    ))}
+                                    <td className="px-3 py-1.5">
+                                      <label className="flex items-center gap-1.5 text-xs text-gray-500">
+                                        <input
+                                          type="checkbox"
+                                          checked={r.highlight}
+                                          onChange={e => updateTableRow(ti, ri, 'highlight', e.target.checked)}
+                                          className="rounded border-gray-300"
+                                        />
+                                        Bold
+                                      </label>
+                                    </td>
+                                    <td className="px-2 py-1.5">
+                                      <RemoveBtn onClick={() => removeTableRow(ti, ri)} />
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        <div className="px-5 pb-4">
+                          <AddRowBtn onClick={() => addTableRow(ti)} label="Add Row" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 

@@ -27,6 +27,30 @@ function parseJson(str, fallback = []) {
   try { return JSON.parse(str); } catch { return fallback; }
 }
 
+// Admin-defined tables arrive as free JSON, so nail them down before they are
+// stored: strings only, every row padded or trimmed to the column count (a
+// ragged row would break the table layout on the public page), and generous
+// but finite caps so a malformed payload cannot store an enormous document.
+function sanitizeTables(raw) {
+  if (!Array.isArray(raw)) return [];
+  const text = (v) => (v === undefined || v === null ? '' : String(v)).slice(0, 300);
+  return raw.slice(0, 20).map((t) => {
+    const columns = (Array.isArray(t?.columns) ? t.columns : []).slice(0, 12).map(text);
+    const rows = (Array.isArray(t?.rows) ? t.rows : []).slice(0, 200).map((r) => {
+      const cells = (Array.isArray(r?.cells) ? r.cells : []).slice(0, columns.length).map(text);
+      while (cells.length < columns.length) cells.push('');
+      return { cells, label: text(r?.label), highlight: Boolean(r?.highlight) };
+    });
+    return {
+      title:       text(t?.title),
+      showSerial:  t?.showSerial !== false,
+      serialLabel: text(t?.serialLabel) || 'S/N',
+      columns,
+      rows,
+    };
+  });
+}
+
 function buildData(body, files, existing = {}) {
   const data = {};
 
@@ -87,6 +111,10 @@ function buildData(body, files, existing = {}) {
   if (body.courseHeading     !== undefined) data.courseHeading     = body.courseHeading;
   if (body.courseDescription !== undefined) data.courseDescription = body.courseDescription;
   data.semesters = parseJson(body.semestersJson, []);
+  // Only touched when the client actually sends it, so any other code path
+  // that updates a department cannot silently wipe the tables.
+  if (body.courseTablesJson !== undefined)
+    data.courseTables = sanitizeTables(parseJson(body.courseTablesJson, []));
 
   // Tab 6
   data.degreePrograms = parseJson(body.degreeProgramsJson, []);

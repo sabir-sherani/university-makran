@@ -131,6 +131,88 @@ function SemesterTable({ sem, index }) {
   );
 }
 
+// ── Admin-defined table ────────────────────────────────────────────
+
+// Columns and cells both come from the dashboard, so nothing here assumes a
+// particular shape: it renders whatever the admin built, and renders nothing
+// at all if the table is still empty.
+function CustomTable({ table }) {
+  const columns = table?.columns || [];
+  const rows    = table?.rows || [];
+  if (!columns.length || !rows.length) return null;
+
+  const serial = table.showSerial !== false;
+  // Numbering counts the ordinary rows only, so a "Total" line at the foot
+  // does not consume a number.
+  let n = 0;
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-gray-200 shadow-sm bg-white">
+      {table.title && (
+        <div
+          className="px-5 py-3.5 text-left font-bold text-sm text-white"
+          style={{ background: '#041476' }}
+        >
+          {table.title}
+        </div>
+      )}
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr style={{ background: '#f0f3ff' }}>
+              {serial && (
+                <th className="text-center px-4 py-2.5 font-semibold text-gray-600 w-16 whitespace-nowrap">
+                  {table.serialLabel || 'S/N'}
+                </th>
+              )}
+              {columns.map((c, i) => (
+                <th
+                  key={i}
+                  className={`px-4 py-2.5 font-semibold text-gray-600 ${i === 0 ? 'text-left' : 'text-center whitespace-nowrap'}`}
+                >
+                  {c}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, ri) => {
+              const isTotal = !!r.highlight;
+              if (!isTotal) n += 1;
+              const num = n;
+              return (
+                <tr
+                  key={ri}
+                  className={
+                    isTotal
+                      ? 'border-t-2 border-gray-300 font-bold text-gray-900'
+                      : (ri % 2 === 0 ? 'bg-white' : 'bg-gray-50')
+                  }
+                  style={isTotal ? { background: '#f0f3ff' } : undefined}
+                >
+                  {serial && (
+                    <td className="px-4 py-2.5 text-center text-gray-500 whitespace-nowrap">
+                      {isTotal ? (r.label || '') : num}
+                    </td>
+                  )}
+                  {columns.map((_, ci) => (
+                    <td
+                      key={ci}
+                      className={`px-4 py-2.5 ${ci === 0 ? 'text-left text-gray-800' : 'text-center text-gray-600'} ${isTotal ? 'text-gray-900' : ''}`}
+                    >
+                      {r.cells?.[ci] || ''}
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 // ── Staff bio modal ───────────────────────────────────────────────────────────
 
 function StaffBioModal({ m, onClose }) {
@@ -603,7 +685,14 @@ export default function DepartmentPage({ dept, suspended }) {
               {dept.semesters?.map((sem, i) => (
                 <SemesterTable key={sem._id || i} sem={sem} index={i} />
               ))}
-              {!dept.courseDescription && !dept.semesters?.length && (
+              {dept.courseTables?.length > 0 && (
+                <div className="space-y-6 pt-2">
+                  {dept.courseTables.map((t, i) => (
+                    <CustomTable key={i} table={t} />
+                  ))}
+                </div>
+              )}
+              {!dept.courseDescription && !dept.semesters?.length && !dept.courseTables?.length && (
                 <div className="bg-white rounded-2xl p-16 text-center text-gray-400 border border-gray-100">
                   <p className="text-4xl mb-3">📚</p>
                   <p className="font-medium">Course content coming soon.</p>

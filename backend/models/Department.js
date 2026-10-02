@@ -27,6 +27,29 @@ const SemesterSchema = new mongoose.Schema({
   courses: [CourseRowSchema],
 });
 
+// A free-form table the admin builds in the dashboard: they choose the column
+// headings and type the cells. Used under the Course Content tab for summary
+// tables (credit breakdowns and the like) that do not fit the fixed
+// semester/course shape above.
+const CustomTableRowSchema = new mongoose.Schema({
+  cells:     { type: [String], default: [] },
+  // Shown in the S/N column instead of a number — lets a highlighted row read
+  // "Total" where the numbering would otherwise be.
+  label:     { type: String,  default: '' },
+  // Renders bold on a tinted background — for a "Total" line at the foot.
+  highlight: { type: Boolean, default: false },
+}, { _id: false });
+
+const CustomTableSchema = new mongoose.Schema({
+  title:       { type: String,  default: '' },
+  // An automatic 1,2,3… column on the left, so the admin never has to retype
+  // the numbering after inserting or deleting a row.
+  showSerial:  { type: Boolean, default: true },
+  serialLabel: { type: String,  default: 'S/N' },
+  columns:     { type: [String], default: [] },
+  rows:        { type: [CustomTableRowSchema], default: [] },
+}, { _id: false });
+
 const DegreeProgramSchema = new mongoose.Schema({
   heading:     String,
   description: String,
@@ -77,6 +100,8 @@ const DepartmentSchema = new mongoose.Schema({
   courseHeading:     { type: String, default: '' },
   courseDescription: { type: String, default: '' },
   semesters: [SemesterSchema],
+  // Extra admin-defined tables, shown after the semester tables.
+  courseTables: { type: [CustomTableSchema], default: [] },
 
   // Tab 6 — Degree Programs
   degreePrograms: [DegreeProgramSchema],
