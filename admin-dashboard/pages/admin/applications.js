@@ -475,6 +475,11 @@ export default function Applications() {
 
                         <td className="px-4 py-3 text-gray-400 text-xs">
                           {app.createdAt ? new Date(app.createdAt).toLocaleDateString('en-GB') : '—'}
+                          {app.batchName && (
+                            <span className="block mt-0.5 text-[10px] font-semibold text-primary/70">
+                              Batch {app.batchName}
+                            </span>
+                          )}
                         </td>
 
                         <td className="px-4 py-3 text-center">

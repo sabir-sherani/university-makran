@@ -40,8 +40,31 @@ const AdmissionSchema = new mongoose.Schema(
     profilePicture:  { type: String },
     qualifications:  { type: String }, // JSON stringified rows
     status:          { type: String, enum: ADMISSION_STATUS, default: 'pending' },
+
+    // The intake this application belongs to. batchName is denormalised so the
+    // admin list and any export can show it without a join, and so the record
+    // still reads correctly if the batch is ever renamed.
+    batchId:         { type: mongoose.Schema.Types.ObjectId, ref: 'AdmissionBatch' },
+    batchName:       { type: String },
   },
   { timestamps: true }
 );
+
+// One application per person per batch, on any of the three identifiers.
+//
+// routes/admissions.js already checks for an existing application and returns a
+// readable message; these indexes are the backstop for the case that check
+// cannot cover — two submissions racing each other, where both read "no
+// existing application" before either has written. There the second insert
+// fails here instead of creating the duplicate.
+//
+// partialFilterExpression keeps them scoped to records that actually carry a
+// batch. Applications submitted before batches existed have no batchId, so they
+// are exempt — which is what lets these indexes be added to a database that
+// already contains duplicates without the build failing.
+const perBatch = { unique: true, partialFilterExpression: { batchId: { $exists: true } } };
+AdmissionSchema.index({ batchId: 1, cnic: 1 },  perBatch);
+AdmissionSchema.index({ batchId: 1, email: 1 }, perBatch);
+AdmissionSchema.index({ batchId: 1, phone: 1 }, perBatch);
 
 module.exports = mongoose.model('Admission', AdmissionSchema);

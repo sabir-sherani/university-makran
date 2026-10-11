@@ -5,6 +5,7 @@ const path    = require('path');
 const fs      = require('fs');
 const { body } = require('express-validator');
 const Admission = require('../models/Admission');
+const AdmissionBatch = require('../models/AdmissionBatch');
 const {
   personName, email, cnic, phone, dateOfBirth, enumField, requiredString, mongoId, validate, enums,
 } = require('../validators');
@@ -75,10 +76,64 @@ router.post('/apply', upload.single('profilePicture'), [
     if (Object.keys(errors).length > 0)
       return res.status(400).json({ message: 'Validation failed.', errors });
 
-    const data = { ...b };
+    // ── Admissions must be open ───────────────────────────────────────
+    // Checked here and not only in the browser: the form is a plain POST and
+    // nothing stops someone submitting it after the closing date.
+    const batch = await AdmissionBatch.findAccepting();
+    if (!batch) {
+      const lapsed = await AdmissionBatch.findOpenFlagged();
+      return res.status(403).json({
+        message: lapsed
+          ? `Admissions for batch ${lapsed.name} closed on ${new Date(lapsed.lastDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}. No new applications are being accepted.`
+          : 'Admissions are currently closed. Please check back when the next batch opens.',
+        closed: true,
+      });
+    }
+
+    // ── One application per person per batch ──────────────────────────
+    // CNIC, email and phone are all treated as the same person. Phone has
+    // already been normalised to 03XXXXXXXXX by the validator chain above and
+    // CNIC has a single fixed format, so these compare reliably.
+    const cnicVal  = String(b.cnic  || '').trim();
+    const emailVal = String(b.email || '').trim().toLowerCase();
+    const phoneVal = String(b.phone || '').trim();
+
+    const existing = await Admission.findOne({
+      batchId: batch._id,
+      $or: [{ cnic: cnicVal }, { email: emailVal }, { phone: phoneVal }],
+    }).select('cnic email phone department status createdAt');
+
+    if (existing) {
+      const matched = existing.cnic === cnicVal
+        ? 'CNIC'
+        : existing.email === emailVal ? 'email address' : 'phone number';
+      return res.status(409).json({
+        message: `An application has already been submitted for batch ${batch.name} using this ${matched}. Only one application per applicant is allowed per batch.`,
+        duplicate: true,
+        matchedOn: matched,
+      });
+    }
+
+    const data = { ...b, email: emailVal, batchId: batch._id, batchName: batch.name };
     if (req.file) data.profilePicture = req.file.path;
-    const saved = await new Admission(data).save();
-    res.status(201).json(saved);
+
+    try {
+      const saved = await new Admission(data).save();
+      return res.status(201).json(saved);
+    } catch (err) {
+      // Two submissions racing each other: the check above passed for both, the
+      // unique index caught the second. Same answer as the check would give.
+      if (err?.code === 11000) {
+        const field = Object.keys(err.keyPattern || {}).find((k) => k !== 'batchId') || 'details';
+        const label = field === 'cnic' ? 'CNIC' : field === 'email' ? 'email address' : 'phone number';
+        return res.status(409).json({
+          message: `An application has already been submitted for batch ${batch.name} using this ${label}. Only one application per applicant is allowed per batch.`,
+          duplicate: true,
+          matchedOn: label,
+        });
+      }
+      throw err;
+    }
   } catch (error) {
     res.status(400).json({ message: error.message });
   }

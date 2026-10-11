@@ -5,6 +5,7 @@ import Link from 'next/link';
 import axios from 'axios';
 import Header from '../../components/Header';
 import Footer from '../../components/Footer';
+import { RichContent, FeeTable, SemesterTable, CustomTable } from '../../components/AcademicTables';
 import {
   Clock, Layers, GraduationCap, ArrowRight,
   FlaskConical, Palette, ChevronLeft, BookOpen,
@@ -12,6 +13,11 @@ import {
 
 const API      = process.env.NEXT_PUBLIC_API_URL;
 const BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api').replace(/\/api\/?$/, '');
+
+const PROGRAM_TABS = [
+  { key: 'courses', label: 'Course Content' },
+  { key: 'fee',     label: 'Fee Structure' },
+];
 
 const CAT_META = {
   Science: {
@@ -38,6 +44,26 @@ export default function ProgramDetail() {
   const [program, setProgram]   = useState(null);
   const [loading, setLoading]   = useState(true);
   const [notFound, setNotFound] = useState(false);
+
+  // The open tab is kept in the URL (?tab=fee) so a refresh, the back button
+  // and a shared link all land on the tab the reader was actually looking at.
+  // Course Content is the default.
+  const isTab = (k) => PROGRAM_TABS.some((t) => t.key === k);
+  const [activeTab, setActiveTab] = useState('courses');
+
+  useEffect(() => {
+    const next = router.query.tab;
+    if (isTab(next) && next !== activeTab) setActiveTab(next);
+  }, [router.query.tab]);
+
+  const openTab = (key) => {
+    setActiveTab(key);
+    router.replace(
+      { pathname: router.pathname, query: { ...router.query, tab: key } },
+      undefined,
+      { shallow: true, scroll: false }
+    );
+  };
 
   useEffect(() => {
     if (!id) return;
@@ -200,6 +226,83 @@ export default function ProgramDetail() {
                   </p>
                 </div>
               )}
+
+              {/* ── Course Content / Fee Structure ── */}
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="flex border-b border-gray-100">
+                  {PROGRAM_TABS.map((t) => {
+                    const on = activeTab === t.key;
+                    return (
+                      <button
+                        key={t.key}
+                        onClick={() => openTab(t.key)}
+                        className={`relative flex-1 px-5 py-4 text-sm font-bold transition-colors ${on ? '' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+                        style={on ? { color } : undefined}
+                      >
+                        {t.label}
+                        {on && (
+                          <span className="absolute bottom-0 left-4 right-4 h-0.5 rounded-full" style={{ background: color }} />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="p-6 md:p-8">
+                  {activeTab === 'courses' ? (
+                    <div className="space-y-5">
+                      {program.courseHeading && (
+                        <h2 className="text-xl font-bold text-gray-900">{program.courseHeading}</h2>
+                      )}
+                      {program.courseDescription && <RichContent html={program.courseDescription} />}
+
+                      {program.courseSemesters?.map((sem, i) => (
+                        <SemesterTable key={sem._id || i} sem={sem} index={i} />
+                      ))}
+
+                      {program.courseTables?.length > 0 && (
+                        <div className="space-y-6 pt-1">
+                          {program.courseTables.map((t, i) => <CustomTable key={i} table={t} />)}
+                        </div>
+                      )}
+
+                      {!program.courseDescription
+                        && !program.courseSemesters?.length
+                        && !program.courseTables?.length && (
+                        <div className="py-12 text-center text-gray-400">
+                          <p className="text-4xl mb-3">📚</p>
+                          <p className="font-medium text-sm">Course content for this program is coming soon.</p>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-5">
+                      {program.feeHeading && (
+                        <h2 className="text-xl font-bold text-gray-900">{program.feeHeading}</h2>
+                      )}
+                      {program.feeDescription && <RichContent html={program.feeDescription} />}
+
+                      <FeeTable
+                        title={program.feeAdmissionTitle || 'Admission Time Fee Structure'}
+                        rows={program.feeAdmissionRows}
+                      />
+                      <FeeTable
+                        title={program.feeSemesterTitle || 'Per Semester Fee Structure'}
+                        rows={program.feeSemesterRows}
+                      />
+
+                      {!program.feeDescription
+                        && !program.feeAdmissionRows?.length
+                        && !program.feeSemesterRows?.length && (
+                        <div className="py-12 text-center text-gray-400">
+                          <p className="text-4xl mb-3">💰</p>
+                          <p className="font-medium text-sm">Fee structure for this program is coming soon.</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
 
               {program.specialization?.length > 0 && (
                 <div className="bg-white rounded-2xl p-8 shadow-sm border border-gray-100">

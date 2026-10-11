@@ -38,7 +38,11 @@ function ActionBadge({ action }) {
     : isPositive
       ? 'bg-green-50 text-green-700'
       : 'bg-blue-50 text-blue-700';
-  return <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold break-words ${cls}`}>{action}</span>;
+  return (
+    <span className={`inline-block max-w-full px-2 py-0.5 rounded-full text-[11px] font-semibold [overflow-wrap:anywhere] ${cls}`}>
+      {action}
+    </span>
+  );
 }
 
 function DiffView({ before, after }) {
@@ -221,9 +225,9 @@ export default function ActivityLog() {
                   <tr className="border-b border-gray-100 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">
                     <th className="px-3 py-3 w-[13%]">When</th>
                     <th className="px-3 py-3 w-[13%]">Actor</th>
-                    <th className="px-3 py-3 w-[11%]">Action</th>
-                    <th className="px-3 py-3 w-[18%]">Record</th>
-                    <th className="px-3 py-3 w-[45%]">Changes</th>
+                    <th className="px-3 py-3 w-[17%]">Action</th>
+                    <th className="px-3 py-3 w-[19%]">Record</th>
+                    <th className="px-3 py-3 w-[38%]">Changes</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">

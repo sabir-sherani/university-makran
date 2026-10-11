@@ -430,7 +430,26 @@ export default function Admission() {
   const [submitted, setSubmitted]     = useState(false);
   const [loading, setLoading]         = useState(false);
   const [errors, setErrors]           = useState({});
+  // null while we are still asking the server; after that { open, batch, reason }.
+  const [batchInfo, setBatchInfo]     = useState(null);
+  // A rejection the form itself cannot predict — already applied, or closed.
+  const [blockMsg, setBlockMsg]       = useState('');
   const picRef = useRef();
+
+  // Which intake is taking applications, if any. If this call itself fails we
+  // deliberately leave the form open: the server re-checks on submit and is the
+  // real gate, so a hiccup here should not lock out a genuine applicant.
+  useEffect(() => {
+    axios.get(`${API_URL}/admission-batches/open`)
+      .then((r) => setBatchInfo(r.data))
+      .catch(() => setBatchInfo({ open: true }));
+  }, []);
+
+  const fmtDate = (d) => {
+    try {
+      return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+    } catch { return ''; }
+  };
 
   const todayStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD, used as max for DOB
 
@@ -624,6 +643,7 @@ export default function Admission() {
       return;
     }
     setErrors({});
+    setBlockMsg('');
     setLoading(true);
     try {
       const fd = new FormData();
@@ -638,8 +658,34 @@ export default function Admission() {
       setPicPreview('');
       if (picRef.current) picRef.current.value = '';
     } catch (error) {
-      const msg = error.response?.data?.message || 'Failed to submit application. Please try again.';
-      const serverErrors = error.response?.data?.errors || {};
+      const status = error.response?.status;
+      const data   = error.response?.data || {};
+
+      // Already applied in this batch, or admissions closed while the form was
+      // open. Neither is a field error, so show it on its own rather than in
+      // the "fix the following" list, which would read as if something typed
+      // were wrong.
+      if (status === 409 && data.duplicate) {
+        setErrors({});
+        setBlockMsg(data.message);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        setLoading(false);
+        return;
+      }
+      if (status === 403 && data.closed) {
+        setErrors({});
+        setBlockMsg(data.message);
+        // Re-ask, so the page swaps to the closed notice instead of leaving a
+        // form that can no longer be submitted.
+        axios.get(`${API_URL}/admission-batches/open`)
+          .then((r) => setBatchInfo(r.data)).catch(() => {});
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        setLoading(false);
+        return;
+      }
+
+      const msg = data.message || 'Failed to submit application. Please try again.';
+      const serverErrors = data.errors || {};
       // Backend keys don't always match the frontend's field-error keys —
       // translate the two naming schemes that differ so the existing
       // per-field highlighting/scroll-to-error UI picks them up.
@@ -898,6 +944,39 @@ export default function Admission() {
                 Submit Another Application
               </button>
             </div>
+          ) : batchInfo && batchInfo.open === false ? (
+            /* No intake is taking applications. Showing the form here would
+               only let people fill in twenty fields and be refused on submit. */
+            <div className="max-w-lg mx-auto text-center" style={{ background: 'white', borderRadius: '24px', padding: '56px 48px', boxShadow: '0 32px 80px rgba(4,20,118,0.14), 0 8px 24px rgba(4,20,118,0.08)', border: '1px solid rgba(4,20,118,0.08)' }}>
+              <div className="w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6" style={{ background: 'linear-gradient(135deg, #fff7ed, #ffedd5)' }}>
+                <svg className="w-11 h-11" fill="none" viewBox="0 0 24 24" stroke="#FA7902" strokeWidth="1.6">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </div>
+              <h3 className="text-2xl font-bold font-heading mb-3" style={{ color: '#041476' }}>
+                Admissions Are Currently Closed
+              </h3>
+              {batchInfo.reason === 'deadline_passed' && batchInfo.batch ? (
+                <p className="text-gray-500 text-sm leading-relaxed">
+                  Applications for the <strong className="text-gray-700">{batchInfo.batch.name}</strong> batch
+                  closed on <strong className="text-gray-700">{fmtDate(batchInfo.batch.lastDate)}</strong>.
+                  Please watch this page for the next intake.
+                </p>
+              ) : (
+                <p className="text-gray-500 text-sm leading-relaxed">
+                  No admission batch is open at the moment. Please check back when the
+                  next intake is announced.
+                </p>
+              )}
+              {blockMsg && (
+                <p className="mt-5 text-xs px-4 py-3 rounded-xl border border-orange-200 bg-orange-50 text-orange-800">
+                  {blockMsg}
+                </p>
+              )}
+              <p className="mt-7 text-xs text-gray-400">
+                Questions? Email <a href="mailto:info@uomp.edu.pk" className="underline" style={{ color: '#041476' }}>info@uomp.edu.pk</a>
+              </p>
+            </div>
           ) : (
             <div className="max-w-4xl mx-auto" style={{ background: 'white', borderRadius: '28px', boxShadow: '0 40px 100px rgba(4,20,118,0.16), 0 12px 32px rgba(4,20,118,0.10)', border: '1px solid rgba(4,20,118,0.08)', overflow: 'hidden' }}>
 
@@ -916,7 +995,39 @@ export default function Admission() {
                 </div>
               </div>
 
+              {/* ── Which intake this form is for, and when it closes ── */}
+              {batchInfo?.open && batchInfo.batch && (
+                <div className="flex flex-wrap items-center gap-x-6 gap-y-1 px-6 md:px-9 py-3 border-b"
+                  style={{ background: '#f6f8ff', borderColor: 'rgba(4,20,118,0.10)' }}>
+                  <span className="text-xs text-gray-500">
+                    Applying for batch{' '}
+                    <strong style={{ color: '#041476' }}>{batchInfo.batch.name}</strong>
+                  </span>
+                  <span className="text-xs text-gray-500">
+                    Last date to apply:{' '}
+                    <strong style={{ color: '#FA7902' }}>{fmtDate(batchInfo.batch.lastDate)}</strong>
+                  </span>
+                </div>
+              )}
+
               <form onSubmit={handleSubmit} className="p-6 md:p-9 space-y-8" noValidate>
+
+                {/* ── Already applied ── */}
+                {blockMsg && (
+                  <div className="flex items-start gap-3 px-5 py-4 rounded-xl border border-orange-200 bg-orange-50" data-has-error="true">
+                    <svg className="w-5 h-5 text-orange-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <div>
+                      <p className="text-sm font-bold text-orange-800">Application already received</p>
+                      <p className="text-xs text-orange-700 mt-1">{blockMsg}</p>
+                      <p className="text-xs text-orange-600/80 mt-1.5">
+                        If you believe this is a mistake, contact{' '}
+                        <a href="mailto:info@uomp.edu.pk" className="underline">info@uomp.edu.pk</a>.
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 {/* ── Validation error summary ── */}
                 {Object.values(errors).some(Boolean) && (

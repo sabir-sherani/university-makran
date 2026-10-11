@@ -38,6 +38,7 @@ const NAV = [
   { label: 'Gallery',         href: '/admin/gallery',        Icon: LuImage },
   { label: 'Downloads',       href: '/admin/downloads',      Icon: LuDownload },
   { label: 'Admissions',      href: '/admin/admissions',     Icon: LuFileEdit },
+  { label: 'Admission Batches', href: '/admin/admission-batches', Icon: LuCalendarRange },
   { label: 'Administration',  href: '/admin/administration', Icon: LuBuilding2 },
   { label: 'Departments',     href: '/admin/departments',    Icon: LuGraduationCap },
   { label: 'Programs',        href: '/admin/programs',       Icon: LuBookOpen },

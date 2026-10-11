@@ -99,18 +99,18 @@ export default function Portal() {
                     ))}
                   </ul>
 
-                  <div className="space-y-2.5">
-                    <Link href={portal.href}>
-                      <span className="block w-full text-center py-2.5 rounded-xl font-bold text-sm text-white transition-opacity hover:opacity-90 cursor-pointer"
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <Link href={portal.href} className="flex-1">
+                      <span className="block w-full text-center py-2.5 rounded-xl font-bold text-sm text-white border-2 border-transparent transition-opacity hover:opacity-90 cursor-pointer"
                         style={{ background: `linear-gradient(135deg, ${portal.gradientFrom}, ${portal.gradientTo})` }}>
                         {portal.loginText}
                       </span>
                     </Link>
                     {portal.showRegister && (
-                      <Link href={`${portal.href}?tab=register`}>
-                        <span className="block w-full text-center py-2.5 rounded-xl font-semibold text-sm transition-colors cursor-pointer border-2 hover:opacity-80"
+                      <Link href={`${portal.href}?tab=register`} className="flex-1">
+                        <span className="block w-full text-center py-2.5 rounded-xl font-semibold text-sm transition-colors cursor-pointer border-2 hover:bg-gray-50"
                           style={{ borderColor: portal.accentColor, color: portal.accentColor }}>
-                          Register Now
+                          {portal.registerText}
                         </span>
                       </Link>
                     )}

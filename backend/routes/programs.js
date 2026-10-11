@@ -19,6 +19,57 @@ function runUpload(req, res) {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+function parseJson(str, fallback = []) {
+  try {
+    const v = JSON.parse(str);
+    return v === null || v === undefined ? fallback : v;
+  } catch { return fallback; }
+}
+
+// Admin-built tables arrive as free JSON. Pin them down before storing:
+// strings only, every row squared off to the column count (a ragged row breaks
+// the table layout on the public page), and finite caps so a malformed payload
+// cannot store an enormous document.
+function sanitizeTables(raw) {
+  if (!Array.isArray(raw)) return [];
+  const text = (v) => (v === undefined || v === null ? '' : String(v)).slice(0, 300);
+  return raw.slice(0, 20).map((t) => {
+    const columns = (Array.isArray(t?.columns) ? t.columns : []).slice(0, 12).map(text);
+    const rows = (Array.isArray(t?.rows) ? t.rows : []).slice(0, 200).map((r) => {
+      const cells = (Array.isArray(r?.cells) ? r.cells : []).slice(0, columns.length).map(text);
+      while (cells.length < columns.length) cells.push('');
+      return { cells, label: text(r?.label), highlight: Boolean(r?.highlight) };
+    });
+    return {
+      title:       text(t?.title),
+      showSerial:  t?.showSerial !== false,
+      serialLabel: text(t?.serialLabel) || 'S/N',
+      columns,
+      rows,
+    };
+  });
+}
+
+function sanitizeSemesters(raw) {
+  if (!Array.isArray(raw)) return [];
+  const text = (v) => (v === undefined || v === null ? '' : String(v)).slice(0, 200);
+  return raw.slice(0, 20).map((sem) => ({
+    title: text(sem?.title),
+    courses: (Array.isArray(sem?.courses) ? sem.courses : []).slice(0, 100).map((c) => ({
+      courseTitle: text(c?.courseTitle),
+      creditHours: text(c?.creditHours),
+      theoryLab:   text(c?.theoryLab),
+      code:        text(c?.code),
+    })),
+  }));
+}
+
+function sanitizeFeeRows(raw) {
+  if (!Array.isArray(raw)) return [];
+  const text = (v) => (v === undefined || v === null ? '' : String(v)).slice(0, 200);
+  return raw.slice(0, 100).map((r) => ({ description: text(r?.description), fee: text(r?.fee) }));
+}
+
 function buildData(body, file, existing = {}) {
   const data = {};
   if (body.title            !== undefined) data.title            = body.title;
@@ -29,6 +80,26 @@ function buildData(body, file, existing = {}) {
   if (body.description      !== undefined) data.description      = body.description;
   if (body.level            !== undefined) data.level            = body.level;
   if (body.department       !== undefined) data.department       = body.department || null;
+
+  // ── Course Content ────────────────────────────────────────────────────
+  if (body.courseHeading     !== undefined) data.courseHeading     = body.courseHeading;
+  if (body.courseDescription !== undefined) data.courseDescription = body.courseDescription;
+  // Each of these is only written when the client actually sends it, so a
+  // partial update from anywhere else cannot wipe a programme's curriculum.
+  if (body.courseSemestersJson !== undefined)
+    data.courseSemesters = sanitizeSemesters(parseJson(body.courseSemestersJson, []));
+  if (body.courseTablesJson !== undefined)
+    data.courseTables = sanitizeTables(parseJson(body.courseTablesJson, []));
+
+  // ── Fee Structure ─────────────────────────────────────────────────────
+  if (body.feeHeading        !== undefined) data.feeHeading        = body.feeHeading;
+  if (body.feeDescription    !== undefined) data.feeDescription    = body.feeDescription;
+  if (body.feeAdmissionTitle !== undefined) data.feeAdmissionTitle = body.feeAdmissionTitle;
+  if (body.feeSemesterTitle  !== undefined) data.feeSemesterTitle  = body.feeSemesterTitle;
+  if (body.feeAdmissionRowsJson !== undefined)
+    data.feeAdmissionRows = sanitizeFeeRows(parseJson(body.feeAdmissionRowsJson, []));
+  if (body.feeSemesterRowsJson !== undefined)
+    data.feeSemesterRows = sanitizeFeeRows(parseJson(body.feeSemesterRowsJson, []));
 
   if (file) {
     data.image = file.path;

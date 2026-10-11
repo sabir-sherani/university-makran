@@ -88,6 +88,7 @@ mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/university_
       require('./models/Program'), require('./models/AcademicSession'), require('./models/Semester'),
       require('./models/SemesterCourse'), require('./models/Designation'), require('./models/Admin'),
       require('./models/DegreeVerification'),
+      require('./models/AdmissionBatch'), require('./models/Admission'),
     ];
     logMissingIndexes(models).catch(err => console.warn('[index-check] failed:', err.message));
   })
@@ -100,6 +101,7 @@ const facultyRouter = require('./routes/faculty');
 const coursesRouter = require('./routes/courses');
 const facilitiesRouter = require('./routes/facilities');
 const admissionsRouter = require('./routes/admissions');
+const admissionBatchesRouter = require('./routes/admissionBatches');
 const feedbackRouter = require('./routes/feedback');
 const degreeVerificationRouter = require('./routes/degreeVerification');
 const contactRouter = require('./routes/contact');
@@ -131,6 +133,7 @@ app.use('/api/faculty', facultyRouter);
 app.use('/api/courses', coursesRouter);
 app.use('/api/facilities', facilitiesRouter);
 app.use('/api/admissions', admissionsRouter);
+app.use('/api/admission-batches', admissionBatchesRouter);
 app.use('/api/feedback', feedbackRouter);
 app.use('/api/degree-verification', degreeVerificationRouter);
 app.use('/api/contact', contactRouter);

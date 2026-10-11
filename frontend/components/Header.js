@@ -16,7 +16,9 @@ export default function Header() {
   const [adminDeptList, setAdminDeptList] = useState([]);
   const [suggestions, setSuggestions]     = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const searchRef = useRef(null);
+  const searchRef  = useRef(null);
+  const headerRef  = useRef(null);
+  const [menuBox, setMenuBox] = useState(null);
   const router    = useRouter();
 
   useEffect(() => {
@@ -41,6 +43,59 @@ export default function Header() {
   }, []);
 
   useEffect(() => { setShowSuggestions(false); }, [router.pathname, router.query]);
+
+  // Leaving the page closes the mobile menu, which also releases the scroll
+  // lock below — otherwise a navigation that does not go through one of the
+  // menu's own links would strand the page unscrollable.
+  useEffect(() => { setIsMenuOpen(false); setMobileExp(null); }, [router.pathname, router.query]);
+
+  // The mobile menu used to sit in the normal page flow inside the sticky
+  // header, which meant opening it simply made the header taller. Expanding a
+  // submenu pushed the rest of the menu below the bottom of the screen, and the
+  // only way to reach it was to scroll the whole page down to the footer first.
+  //
+  // It is now a fixed panel pinned directly under the header bar:
+  //   - out of the page flow, so opening it no longer grows the header or
+  //     shifts the page behind it,
+  //   - capped to the space between the bar and the bottom of the window, so it
+  //     scrolls inside itself (overscroll-contain keeps that scroll from
+  //     chaining out to the page when it reaches either end),
+  //   - with the page behind frozen while it is open.
+  //
+  // The lock goes on documentElement as well as body: the scrolling element is
+  // <html>, so body alone does nothing at all.
+  useEffect(() => {
+    if (!isMenuOpen) return;
+
+    const fit = () => {
+      // Resized up to a desktop width while open — the hamburger is gone, so
+      // close rather than leave an invisible panel holding the scroll lock.
+      if (window.innerWidth >= 1024) { setIsMenuOpen(false); return; }
+      const hdr = headerRef.current;
+      if (!hdr) return;
+      const top = Math.round(hdr.getBoundingClientRect().bottom);
+      setMenuBox({ top, maxH: Math.max(160, Math.round(window.innerHeight - top)) });
+    };
+
+    fit();
+
+    const y        = window.scrollY;
+    const prevHtml = document.documentElement.style.overflow;
+    const prevBody = document.body.style.overflow;
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.overflow            = 'hidden';
+
+    window.addEventListener('resize', fit);
+    window.addEventListener('orientationchange', fit);
+
+    return () => {
+      document.documentElement.style.overflow = prevHtml;
+      document.body.style.overflow            = prevBody;
+      window.scrollTo(0, y);
+      window.removeEventListener('resize', fit);
+      window.removeEventListener('orientationchange', fit);
+    };
+  }, [isMenuOpen]);
 
   const navLinks = [
     { label: 'Home', href: '/' },
@@ -94,7 +149,7 @@ export default function Header() {
     : router.pathname === link.href;
 
   return (
-    <header className="sticky top-0 z-50" style={{ boxShadow: '0 2px 20px rgba(0,0,0,0.12)' }}>
+    <header ref={headerRef} className="sticky top-0 z-50" style={{ boxShadow: '0 2px 20px rgba(0,0,0,0.12)' }}>
 
       {/* ── TOP BAR ── */}
       <div style={{ background: '#0b1229', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
@@ -310,7 +365,15 @@ export default function Header() {
 
           {/* ── MOBILE MENU ── */}
           {isMenuOpen && (
-            <div className="lg:hidden border-t pb-4 pt-3 flex flex-col gap-1" style={{ borderColor: '#e5e7eb' }}>
+            <div
+              className="lg:hidden fixed left-0 right-0 border-t bg-white shadow-lg px-4 sm:px-6 pb-4 pt-3 flex flex-col gap-1 overflow-y-auto overscroll-contain max-h-[70vh]"
+              style={{
+                borderColor: '#e5e7eb',
+                top:       menuBox ? `${menuBox.top}px` : undefined,
+                maxHeight: menuBox ? `${menuBox.maxH}px` : undefined,
+                WebkitOverflowScrolling: 'touch',
+              }}
+            >
               {/* Mobile contact info */}
               <div className="flex flex-col gap-2 mb-3 px-3 py-3 rounded-lg" style={{ background: '#f8f9fe' }}>
                 <a href="mailto:info@uomp.edu.pk" className="flex items-center gap-2 text-xs text-gray-500 hover:text-blue-700">

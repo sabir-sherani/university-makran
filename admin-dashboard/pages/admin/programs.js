@@ -1,4 +1,5 @@
 ﻿import React, { useState, useEffect, useRef } from 'react';
+import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import Image from 'next/image';
 import AdminHeader from '../../components/AdminHeader';
@@ -11,6 +12,8 @@ import {
   LuPlus, LuImage, LuCheckCircle,
 } from 'react-icons/lu';
 
+const RichText = dynamic(() => import('../../components/RichTextEditor'), { ssr: false });
+
 const API      = process.env.NEXT_PUBLIC_API_URL;
 const BASE_URL = API ? API.replace(/\/api\/?$/, '') : '';
 
@@ -22,6 +25,25 @@ const CATEGORIES = [
 const emptyForm = {
   title: '', category: 'Science', duration: '', semesters: '',
   shortDescription: '', level: 'Undergraduate', department: '',
+};
+
+// Course content and fees are held apart from `formData` on purpose: the submit
+// handler flattens formData into FormData field by field, which would turn these
+// arrays into "[object Object]".
+const emptyCourseRow   = () => ({ courseTitle: '', creditHours: '', theoryLab: '', code: '' });
+const emptySemester    = () => ({ title: '', courses: [emptyCourseRow()] });
+const emptyFeeRow      = () => ({ description: '', fee: '' });
+const emptyTableRow    = (cols = 0) => ({ cells: Array.from({ length: cols }, () => ''), label: '', highlight: false });
+const emptyCustomTable = () => ({
+  title: '', showSerial: true, serialLabel: 'S/N',
+  columns: ['Column 1', 'Column 2'], rows: [emptyTableRow(2)],
+});
+
+const emptyAcademic = {
+  courseHeading: '', courseDescription: '', courseSemesters: [], courseTables: [],
+  feeHeading: '', feeDescription: '',
+  feeAdmissionTitle: 'Admission Time Fee Structure', feeAdmissionRows: [],
+  feeSemesterTitle:  'Per Semester Fee Structure',   feeSemesterRows:  [],
 };
 
 function imgSrc(image) {
@@ -43,6 +65,9 @@ export default function Programs() {
   const [errors, setErrors]           = useState({});
   const [flash, setFlash]             = useState({ text: '', ok: true });
   const [filterCat, setFilterCat]     = useState('all');
+  const [acad, setAcad]               = useState(emptyAcademic);
+  const [acadTab, setAcadTab]         = useState('courses');
+  const [acadOpen, setAcadOpen]       = useState(false);
   const [trashItems, setTrashItems]   = useState([]);
   const [trashLoading, setTrashLoading] = useState(false);
   const [showTrash, setShowTrash]     = useState(false);
@@ -143,6 +168,9 @@ export default function Programs() {
     setExistingImage('');
     setEditId(null);
     setErrors({});
+    setAcad(emptyAcademic);
+    setAcadTab('courses');
+    setAcadOpen(false);
     if (fileRef.current) fileRef.current.value = '';
   }
 
@@ -157,6 +185,38 @@ export default function Programs() {
       level:            prog.level || 'Undergraduate',
       department:       prog.department?._id || prog.department || '',
     });
+    setAcad({
+      courseHeading:     prog.courseHeading     || '',
+      courseDescription: prog.courseDescription || '',
+      courseSemesters: (prog.courseSemesters || []).map((sm) => ({
+        title: sm.title || '',
+        courses: (sm.courses || []).map((c) => ({
+          courseTitle: c.courseTitle || '', creditHours: c.creditHours || '',
+          theoryLab:   c.theoryLab   || '', code:        c.code        || '',
+        })),
+      })),
+      // Rows are rebuilt against the column count, so an older record with a
+      // ragged row still lines up in the editor.
+      courseTables: (prog.courseTables || []).map((t) => {
+        const columns = t.columns || [];
+        return {
+          title: t.title || '', showSerial: t.showSerial !== false,
+          serialLabel: t.serialLabel || 'S/N', columns,
+          rows: (t.rows || []).map((r) => ({
+            cells: Array.from({ length: columns.length }, (_, i) => r.cells?.[i] || ''),
+            label: r.label || '', highlight: !!r.highlight,
+          })),
+        };
+      }),
+      feeHeading:        prog.feeHeading        || '',
+      feeDescription:    prog.feeDescription    || '',
+      feeAdmissionTitle: prog.feeAdmissionTitle || 'Admission Time Fee Structure',
+      feeAdmissionRows: (prog.feeAdmissionRows || []).map((r) => ({ description: r.description || '', fee: r.fee || '' })),
+      feeSemesterTitle:  prog.feeSemesterTitle  || 'Per Semester Fee Structure',
+      feeSemesterRows:  (prog.feeSemesterRows  || []).map((r) => ({ description: r.description || '', fee: r.fee || '' })),
+    });
+    setAcadTab('courses');
+
     const src = imgSrc(prog.image);
     setExistingImage(prog.image || '');
     setImagePreview(src);
@@ -164,6 +224,43 @@ export default function Programs() {
     setErrors({});
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
+
+  // ── Course content & fee editors ────────────────────────────────────────
+  const setA = (k, v) => setAcad((p) => ({ ...p, [k]: v }));
+
+  // Semesters
+  const addSemester    = () => setA('courseSemesters', [...acad.courseSemesters, emptySemester()]);
+  const removeSemester = (i) => setA('courseSemesters', acad.courseSemesters.filter((_, j) => j !== i));
+  const setSemTitle    = (i, v) => setA('courseSemesters', acad.courseSemesters.map((sm, j) => j === i ? { ...sm, title: v } : sm));
+  const addCourse      = (si) => setA('courseSemesters', acad.courseSemesters.map((sm, j) => j === si ? { ...sm, courses: [...sm.courses, emptyCourseRow()] } : sm));
+  const removeCourse   = (si, ci) => setA('courseSemesters', acad.courseSemesters.map((sm, j) => j === si ? { ...sm, courses: sm.courses.filter((_, k) => k !== ci) } : sm));
+  const updateCourse   = (si, ci, k, v) => setA('courseSemesters', acad.courseSemesters.map((sm, j) =>
+    j === si ? { ...sm, courses: sm.courses.map((c, k2) => k2 === ci ? { ...c, [k]: v } : c) } : sm));
+
+  // Custom tables — every change goes through mapTable so adding or removing a
+  // column always reshapes the existing rows with it, otherwise the cells fall
+  // out of step with the headings.
+  const mapTable = (ti, fn) => setA('courseTables', acad.courseTables.map((t, j) => j === ti ? fn(t) : t));
+  const addTable      = () => setA('courseTables', [...acad.courseTables, emptyCustomTable()]);
+  const removeTable   = (ti) => setA('courseTables', acad.courseTables.filter((_, j) => j !== ti));
+  const updateTable   = (ti, k, v) => mapTable(ti, (t) => ({ ...t, [k]: v }));
+  const addColumn     = (ti) => mapTable(ti, (t) => ({ ...t,
+    columns: [...t.columns, 'Column ' + (t.columns.length + 1)],
+    rows: t.rows.map((r) => ({ ...r, cells: [...r.cells, ''] })) }));
+  const removeColumn  = (ti, ci) => mapTable(ti, (t) => ({ ...t,
+    columns: t.columns.filter((_, j) => j !== ci),
+    rows: t.rows.map((r) => ({ ...r, cells: r.cells.filter((_, j) => j !== ci) })) }));
+  const renameColumn  = (ti, ci, v) => mapTable(ti, (t) => ({ ...t, columns: t.columns.map((c, j) => j === ci ? v : c) }));
+  const addTableRow   = (ti) => mapTable(ti, (t) => ({ ...t, rows: [...t.rows, emptyTableRow(t.columns.length)] }));
+  const removeTableRow = (ti, ri) => mapTable(ti, (t) => ({ ...t, rows: t.rows.filter((_, j) => j !== ri) }));
+  const updateTableRow = (ti, ri, k, v) => mapTable(ti, (t) => ({ ...t, rows: t.rows.map((r, j) => j === ri ? { ...r, [k]: v } : r) }));
+  const updateCell     = (ti, ri, ci, v) => mapTable(ti, (t) => ({ ...t,
+    rows: t.rows.map((r, j) => j === ri ? { ...r, cells: r.cells.map((c, k) => k === ci ? v : c) } : r) }));
+
+  // Fee rows — `list` is whichever of the two fee tables is being edited.
+  const addFeeRow    = (list) => setA(list, [...acad[list], emptyFeeRow()]);
+  const removeFeeRow = (list, i) => setA(list, acad[list].filter((_, j) => j !== i));
+  const updateFeeRow = (list, i, k, v) => setA(list, acad[list].map((r, j) => j === i ? { ...r, [k]: v } : r));
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -176,6 +273,18 @@ export default function Programs() {
       Object.entries(formData).forEach(([k, v]) => fd.append(k, v));
       if (imageFile) fd.append('image', imageFile);
       else if (existingImage) fd.append('existingImage', existingImage);
+
+      fd.append('courseHeading',     acad.courseHeading);
+      fd.append('courseDescription', acad.courseDescription);
+      fd.append('courseSemestersJson', JSON.stringify(acad.courseSemesters));
+      fd.append('courseTablesJson',    JSON.stringify(acad.courseTables));
+
+      fd.append('feeHeading',           acad.feeHeading);
+      fd.append('feeDescription',       acad.feeDescription);
+      fd.append('feeAdmissionTitle',    acad.feeAdmissionTitle);
+      fd.append('feeSemesterTitle',     acad.feeSemesterTitle);
+      fd.append('feeAdmissionRowsJson', JSON.stringify(acad.feeAdmissionRows));
+      fd.append('feeSemesterRowsJson',  JSON.stringify(acad.feeSemesterRows));
 
       if (editId) {
         await axios.put(`${API}/programs/${editId}`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
@@ -434,6 +543,233 @@ export default function Programs() {
                 </div>
 
                 {/* Submit */}
+                {/* ══ Course Content & Fee Structure ══ */}
+                <div className="rounded-xl border border-gray-200 overflow-hidden">
+                  <button type="button" onClick={() => setAcadOpen((o) => !o)}
+                    className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors">
+                    <span className="text-sm font-bold text-gray-700">Course Content &amp; Fee Structure</span>
+                    <span className="text-xs text-gray-400">{acadOpen ? 'Hide ▲' : 'Edit ▼'}</span>
+                  </button>
+
+                  {acadOpen && (
+                    <div className="p-4 space-y-4">
+                      <p className="text-xs text-gray-500">
+                        These are specific to this program — BS AI, BS CS and BS IT each keep their own.
+                      </p>
+
+                      {/* sub-tabs, mirroring the public page */}
+                      <div className="flex gap-1 p-1 rounded-lg bg-gray-100">
+                        {[['courses', 'Course Content'], ['fee', 'Fee Structure']].map(([k, label]) => (
+                          <button key={k} type="button" onClick={() => setAcadTab(k)}
+                            className={`flex-1 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${acadTab === k ? 'bg-white shadow-sm text-primary' : 'text-gray-500 hover:text-gray-700'}`}>
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {acadTab === 'courses' ? (
+                        <div className="space-y-4">
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-600 mb-1">Section Heading</label>
+                            <input value={acad.courseHeading} onChange={(e) => setA('courseHeading', e.target.value)}
+                              placeholder="e.g. Course Curriculum" className="admin-input text-sm" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-600 mb-1">Description</label>
+                            <RichText extended value={acad.courseDescription}
+                              onChange={(v) => setA('courseDescription', v)}
+                              placeholder="Overview of this program's curriculum…" />
+                          </div>
+
+                          {/* Semesters */}
+                          <div className="flex items-center justify-between pt-1">
+                            <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wide">Semester-wise Courses</h4>
+                            <button type="button" onClick={addSemester} className="text-xs font-semibold text-primary">+ Add Semester</button>
+                          </div>
+
+                          {acad.courseSemesters.length === 0 ? (
+                            <p className="text-xs text-gray-400 border border-dashed border-gray-300 rounded-lg py-6 text-center">
+                              No semesters yet.
+                            </p>
+                          ) : acad.courseSemesters.map((sem, si) => (
+                            <div key={si} className="rounded-lg border border-gray-200 overflow-hidden">
+                              <div className="flex items-center gap-2 px-3 py-2 bg-primary text-white">
+                                <input value={sem.title} onChange={(e) => setSemTitle(si, e.target.value)}
+                                  placeholder={`Semester ${si + 1}`}
+                                  className="flex-1 bg-white/20 text-white placeholder-white/60 rounded px-2 py-1 text-xs outline-none border border-white/30" />
+                                <button type="button" onClick={() => addCourse(si)} className="text-[11px] bg-white/20 px-2 py-1 rounded">+ Course</button>
+                                <button type="button" onClick={() => removeSemester(si)} className="text-[11px] bg-red-500/60 px-2 py-1 rounded">Remove</button>
+                              </div>
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-xs">
+                                  <thead>
+                                    <tr className="bg-gray-50 border-b border-gray-200 text-gray-600">
+                                      <th className="text-left px-2 py-1.5 w-6">#</th>
+                                      <th className="text-left px-2 py-1.5">Course Title</th>
+                                      <th className="text-left px-2 py-1.5 w-20">Cr. Hrs</th>
+                                      <th className="text-left px-2 py-1.5 w-20">Th+Lab</th>
+                                      <th className="text-left px-2 py-1.5 w-20">Code</th>
+                                      <th className="w-7" />
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {sem.courses.length === 0 ? (
+                                      <tr><td colSpan={6} className="px-2 py-2 text-center text-gray-400">No courses</td></tr>
+                                    ) : sem.courses.map((c, ci) => (
+                                      <tr key={ci} className="border-b border-gray-100">
+                                        <td className="px-2 py-1 text-gray-400">{ci + 1}</td>
+                                        <td className="px-1 py-1"><input value={c.courseTitle} onChange={(e) => updateCourse(si, ci, 'courseTitle', e.target.value)} placeholder="Data Structures" className="admin-input py-1 text-xs" /></td>
+                                        <td className="px-1 py-1"><input value={c.creditHours} onChange={(e) => updateCourse(si, ci, 'creditHours', e.target.value)} placeholder="3" className="admin-input py-1 text-xs text-center" /></td>
+                                        <td className="px-1 py-1"><input value={c.theoryLab} onChange={(e) => updateCourse(si, ci, 'theoryLab', e.target.value)} placeholder="3+0" className="admin-input py-1 text-xs text-center" /></td>
+                                        <td className="px-1 py-1"><input value={c.code} onChange={(e) => updateCourse(si, ci, 'code', e.target.value)} placeholder="CS-101" className="admin-input py-1 text-xs" /></td>
+                                        <td className="px-1 py-1"><button type="button" onClick={() => removeCourse(si, ci)} className="text-red-400 hover:text-red-600">✕</button></td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          ))}
+
+                          {/* Extra tables */}
+                          <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+                            <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wide">Additional Tables</h4>
+                            <button type="button" onClick={addTable} className="text-xs font-semibold text-primary">+ Add Table</button>
+                          </div>
+
+                          {acad.courseTables.map((t, ti) => (
+                            <div key={ti} className="rounded-lg border border-gray-200 overflow-hidden">
+                              <div className="flex items-center gap-2 px-3 py-2 bg-primary text-white">
+                                <input value={t.title} onChange={(e) => updateTable(ti, 'title', e.target.value)}
+                                  placeholder="Table heading — e.g. BS 4 Years, Courses Semester-wise"
+                                  className="flex-1 bg-white/20 text-white placeholder-white/60 rounded px-2 py-1 text-xs outline-none border border-white/30" />
+                                <button type="button" onClick={() => removeTable(ti)} className="text-[11px] bg-red-500/60 px-2 py-1 rounded">Remove</button>
+                              </div>
+
+                              <div className="px-3 py-2 bg-gray-50 border-b border-gray-200">
+                                <div className="flex items-center justify-between mb-1.5">
+                                  <span className="text-[11px] font-semibold text-gray-600">Column headings</span>
+                                  <button type="button" onClick={() => addColumn(ti)} className="text-[11px] font-semibold text-primary">+ Add Column</button>
+                                </div>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {t.columns.map((c, ci) => (
+                                    <div key={ci} className="flex items-center gap-1 bg-white border border-gray-200 rounded px-1.5 py-0.5">
+                                      <input value={c} onChange={(e) => renameColumn(ti, ci, e.target.value)}
+                                        placeholder={'Column ' + (ci + 1)} className="text-[11px] outline-none w-28 text-gray-700" />
+                                      <button type="button" onClick={() => removeColumn(ti, ci)} className="text-red-400 text-[11px]">✕</button>
+                                    </div>
+                                  ))}
+                                </div>
+                                <label className="flex items-center gap-1.5 mt-2 text-[11px] text-gray-600">
+                                  <input type="checkbox" checked={t.showSerial} onChange={(e) => updateTable(ti, 'showSerial', e.target.checked)} className="rounded border-gray-300" />
+                                  Number rows automatically
+                                  {t.showSerial && (
+                                    <input value={t.serialLabel} onChange={(e) => updateTable(ti, 'serialLabel', e.target.value)}
+                                      placeholder="S/N" className="border border-gray-200 rounded px-1.5 py-0.5 w-14 ml-1 outline-none" />
+                                  )}
+                                </label>
+                              </div>
+
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-xs">
+                                  <thead>
+                                    <tr className="bg-gray-50 border-b border-gray-200 text-gray-600">
+                                      {t.showSerial && <th className="text-left px-2 py-1.5 w-16">{t.serialLabel || 'S/N'}</th>}
+                                      {t.columns.map((c, ci) => <th key={ci} className="text-left px-2 py-1.5">{c || 'Column ' + (ci + 1)}</th>)}
+                                      <th className="text-left px-2 py-1.5 w-14">Bold</th>
+                                      <th className="w-7" />
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {t.rows.map((r, ri) => {
+                                      const number = t.rows.slice(0, ri + 1).filter((x) => !x.highlight).length;
+                                      return (
+                                        <tr key={ri} className={'border-b border-gray-100 ' + (r.highlight ? 'bg-primary/5' : '')}>
+                                          {t.showSerial && (
+                                            <td className="px-2 py-1">
+                                              {r.highlight
+                                                ? <input value={r.label} onChange={(e) => updateTableRow(ti, ri, 'label', e.target.value)} placeholder="Total" className="admin-input py-1 text-xs font-semibold" />
+                                                : <span className="text-gray-400">{number}</span>}
+                                            </td>
+                                          )}
+                                          {t.columns.map((_, ci) => (
+                                            <td key={ci} className="px-1 py-1">
+                                              <input value={r.cells[ci] || ''} onChange={(e) => updateCell(ti, ri, ci, e.target.value)}
+                                                className={'admin-input py-1 text-xs ' + (r.highlight ? 'font-semibold' : '')} />
+                                            </td>
+                                          ))}
+                                          <td className="px-2 py-1">
+                                            <input type="checkbox" checked={r.highlight} onChange={(e) => updateTableRow(ti, ri, 'highlight', e.target.checked)} className="rounded border-gray-300" />
+                                          </td>
+                                          <td className="px-1 py-1"><button type="button" onClick={() => removeTableRow(ti, ri)} className="text-red-400 hover:text-red-600">✕</button></td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                              <div className="px-3 py-2">
+                                <button type="button" onClick={() => addTableRow(ti)} className="text-xs font-semibold text-primary">+ Add Row</button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-600 mb-1">Section Heading</label>
+                            <input value={acad.feeHeading} onChange={(e) => setA('feeHeading', e.target.value)}
+                              placeholder="e.g. Fee Structure" className="admin-input text-sm" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-gray-600 mb-1">Description</label>
+                            <RichText extended value={acad.feeDescription}
+                              onChange={(v) => setA('feeDescription', v)}
+                              placeholder="Notes about this program's fees…" />
+                          </div>
+
+                          {[
+                            { titleKey: 'feeAdmissionTitle', rowsKey: 'feeAdmissionRows' },
+                            { titleKey: 'feeSemesterTitle',  rowsKey: 'feeSemesterRows'  },
+                          ].map(({ titleKey, rowsKey }) => (
+                            <div key={rowsKey} className="rounded-lg border border-gray-200 overflow-hidden">
+                              <div className="px-3 py-2 bg-primary">
+                                <input value={acad[titleKey]} onChange={(e) => setA(titleKey, e.target.value)}
+                                  className="w-full bg-white/20 text-white placeholder-white/60 rounded px-2 py-1 text-xs outline-none border border-white/30" />
+                              </div>
+                              <table className="w-full text-xs">
+                                <thead>
+                                  <tr className="bg-gray-50 border-b border-gray-200 text-gray-600">
+                                    <th className="text-left px-2 py-1.5 w-6">#</th>
+                                    <th className="text-left px-2 py-1.5">Description</th>
+                                    <th className="text-left px-2 py-1.5 w-28">Fee (PKR)</th>
+                                    <th className="w-7" />
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {acad[rowsKey].length === 0 ? (
+                                    <tr><td colSpan={4} className="px-2 py-2 text-center text-gray-400">No rows</td></tr>
+                                  ) : acad[rowsKey].map((r, i) => (
+                                    <tr key={i} className="border-b border-gray-100">
+                                      <td className="px-2 py-1 text-gray-400">{i + 1}</td>
+                                      <td className="px-1 py-1"><input value={r.description} onChange={(e) => updateFeeRow(rowsKey, i, 'description', e.target.value)} placeholder="Admission Fee" className="admin-input py-1 text-xs" /></td>
+                                      <td className="px-1 py-1"><input value={r.fee} onChange={(e) => updateFeeRow(rowsKey, i, 'fee', e.target.value)} placeholder="5000" className="admin-input py-1 text-xs" /></td>
+                                      <td className="px-1 py-1"><button type="button" onClick={() => removeFeeRow(rowsKey, i)} className="text-red-400 hover:text-red-600">✕</button></td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                              <div className="px-3 py-2">
+                                <button type="button" onClick={() => addFeeRow(rowsKey)} className="text-xs font-semibold text-primary">+ Add Row</button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
                 <button
                   type="submit" disabled={saving}
                   className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-white font-bold text-sm transition-all duration-200 hover:opacity-90 hover:-translate-y-0.5 hover:shadow-lg disabled:opacity-60 disabled:translate-y-0"
