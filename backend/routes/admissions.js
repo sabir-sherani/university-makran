@@ -73,6 +73,39 @@ router.post('/apply', upload.single('profilePicture'), [
       }
     }
 
+    // ── Each preference must be a different programme ─────────────────
+    // A choice is identified by department + programme, so the same programme
+    // title offered by two departments still counts as two distinct choices.
+    const choiceKey = (dept, prog) =>
+      `${String(dept || '').trim().toLowerCase()}::${String(prog || '').trim().toLowerCase()}`;
+
+    const preferences = [
+      { field: 'program',        dept: b.department,       prog: b.program,        label: '1st priority' },
+      { field: 'secondPriority', dept: b.secondDepartment, prog: b.secondPriority, label: '2nd priority' },
+      { field: 'thirdPriority',  dept: b.thirdDepartment,  prog: b.thirdPriority,  label: '3rd priority' },
+    ].filter((c) => String(c.prog || '').trim() !== '');
+
+    const seen = new Map();
+    for (const c of preferences) {
+      const key = choiceKey(c.dept, c.prog);
+      if (seen.has(key)) {
+        errors[c.field] =
+          `${c.prog} is already selected as your ${seen.get(key)}. Choose a different program for your ${c.label}.`;
+      } else {
+        seen.set(key, c.label);
+      }
+    }
+
+    // A second or third choice without its department is incomplete.
+    for (const [progField, deptField, label] of [
+      ['secondPriority', 'secondDepartment', '2nd priority'],
+      ['thirdPriority',  'thirdDepartment',  '3rd priority'],
+    ]) {
+      if (String(b[progField] || '').trim() && !String(b[deptField] || '').trim()) {
+        errors[deptField] = `Select the department for your ${label}.`;
+      }
+    }
+
     if (Object.keys(errors).length > 0)
       return res.status(400).json({ message: 'Validation failed.', errors });
 

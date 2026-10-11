@@ -3,6 +3,7 @@ import Head from 'next/head';
 import AdminHeader from '../../components/AdminHeader';
 import axios from 'axios';
 
+import ApplicationPrintout from '../../components/ApplicationPrintout';
 const API  = process.env.NEXT_PUBLIC_API_URL;
 const BASE = API ? API.replace(/\/api\/?$/, '') : 'http://localhost:5000';
 
@@ -127,6 +128,13 @@ function DetailPanel({ app, onClose, onStatusChange }) {
               >
                 {saving ? 'Saving…' : 'Save'}
               </button>
+              <button
+                onClick={() => window.print()}
+                title="Print this application form"
+                className="px-4 py-2 border border-gray-200 text-gray-700 text-sm font-bold rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Print
+              </button>
             </div>
           </div>
 
@@ -145,6 +153,15 @@ function DetailPanel({ app, onClose, onStatusChange }) {
             </div>
           )}
 
+          {/* Hidden on screen — the print stylesheet reveals only this. */}
+          <ApplicationPrintout
+            app={app}
+            id="admin-application-printout"
+            photoUrl={app.profilePicture
+              ? (app.profilePicture.startsWith('http') ? app.profilePicture : `${BASE}${app.profilePicture}`)
+              : ''}
+          />
+
           {/* Section: Program of Study */}
           <div style={{ border: '1.5px solid rgba(4,20,118,0.1)', borderRadius: '16px', overflow: 'hidden' }}>
             <div className="px-5 py-3 flex items-center gap-2" style={{ background: 'linear-gradient(135deg, #f0f4ff, #eef2ff)' }}>
@@ -156,8 +173,10 @@ function DetailPanel({ app, onClose, onStatusChange }) {
             <div className="px-5 py-3 bg-white">
               <InfoRow label="Department"      value={app.department} />
               <InfoRow label="Program"         value={app.program} />
-              <InfoRow label="2nd Priority"    value={app.secondPriority} />
-              <InfoRow label="3rd Priority"    value={app.thirdPriority} />
+              <InfoRow label="2nd Priority"    value={app.secondPriority
+                ? `${app.secondPriority}${app.secondDepartment ? ` — ${app.secondDepartment}` : ''}` : ''} />
+              <InfoRow label="3rd Priority"    value={app.thirdPriority
+                ? `${app.thirdPriority}${app.thirdDepartment ? ` — ${app.thirdDepartment}` : ''}` : ''} />
             </div>
           </div>
 

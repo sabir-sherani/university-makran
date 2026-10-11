@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import ApplicationPrintout from '../components/ApplicationPrintout';
 import Head from 'next/head';
 import Header from '../components/Header.js';
 import Footer from '../components/Footer.js';
@@ -418,7 +419,9 @@ const NAME_CHARS_RE = /[^a-zA-Z\s.''-]/g;
 
 export default function Admission() {
   const emptyForm = {
-    department: '', program: '', secondPriority: '', thirdPriority: '',
+    department: '', program: '',
+    secondDepartment: '', secondPriority: '',
+    thirdDepartment: '',  thirdPriority: '',
     candidateName: '', fatherName: '', email: '', cnic: '', dob: '',
     gender: '', phone: '', whatsapp: '', nationality: '', city: '',
     currentAddress: '', permanentAddress: '',
@@ -428,6 +431,9 @@ export default function Admission() {
   const [profilePic, setProfilePic]   = useState(null);
   const [picPreview, setPicPreview]   = useState('');
   const [submitted, setSubmitted]     = useState(false);
+  // The saved application comes back from the server — kept so the applicant
+  // can print a filled copy after the form itself has been cleared.
+  const [submittedApp, setSubmittedApp] = useState(null);
   const [loading, setLoading]         = useState(false);
   const [errors, setErrors]           = useState({});
   // null while we are still asking the server; after that { open, batch, reason }.
@@ -557,8 +563,8 @@ export default function Admission() {
   const [notices,        setNotices]        = useState([]);
   const [noticesLoading, setNoticesLoading] = useState(true);
   const [lightboxImg,    setLightboxImg]    = useState(null);
-  const [programList,    setProgramList]    = useState([]);
-  const [programsLoading, setProgramsLoading] = useState(false);
+  const [programsByDept, setProgramsByDept] = useState({}); // { [deptName]: [titles] }
+  const [loadingDepts,   setLoadingDepts]   = useState({}); // { [deptName]: bool }
   const [departmentList, setDepartmentList] = useState([]); // [{_id, name}]
 
   useEffect(() => {
@@ -575,16 +581,55 @@ export default function Admission() {
       .catch(() => {});
   }, []);
 
-  // Re-fetch programs whenever the selected department changes
+  // Each of the three preferences can point at a different department, so the
+  // programme lists are cached per department name rather than there being a
+  // single list tied to the first choice.
   useEffect(() => {
-    const selected = departmentList.find(d => d.name === formData.department);
-    if (!selected) { setProgramList([]); return; }
-    setProgramsLoading(true);
-    axios.get(`${API_URL}/programs?department=${selected._id}`)
-      .then(res => setProgramList((res.data || []).map(p => p.title).filter(Boolean)))
-      .catch(() => setProgramList([]))
-      .finally(() => setProgramsLoading(false));
-  }, [formData.department, departmentList]);
+    const wanted = [formData.department, formData.secondDepartment, formData.thirdDepartment]
+      .filter(Boolean);
+
+    wanted.forEach((name) => {
+      if (programsByDept[name] !== undefined || loadingDepts[name]) return;
+      const dept = departmentList.find(d => d.name === name);
+      if (!dept) return;
+
+      setLoadingDepts(prev => ({ ...prev, [name]: true }));
+      axios.get(`${API_URL}/programs?department=${dept._id}`)
+        .then(res => setProgramsByDept(prev => ({
+          ...prev, [name]: (res.data || []).map(p => p.title).filter(Boolean),
+        })))
+        .catch(() => setProgramsByDept(prev => ({ ...prev, [name]: [] })))
+        .finally(() => setLoadingDepts(prev => ({ ...prev, [name]: false })));
+    });
+  }, [formData.department, formData.secondDepartment, formData.thirdDepartment, departmentList]);
+
+  const programsFor = (deptName) => programsByDept[deptName] || [];
+  const deptLoading = (deptName) => !!loadingDepts[deptName];
+
+  // A choice is a department + programme pair, so the same programme title in
+  // two departments still counts as two separate choices.
+  const choiceKey = (d, prog) =>
+    `${String(d || '').trim().toLowerCase()}::${String(prog || '').trim().toLowerCase()}`;
+
+  const PREFERENCES = [
+    { deptField: 'department',       progField: 'program' },
+    { deptField: 'secondDepartment', progField: 'secondPriority' },
+    { deptField: 'thirdDepartment',  progField: 'thirdPriority' },
+  ];
+
+  // Programmes still open to this preference: everything in its department,
+  // minus whatever the other two preferences have already taken.
+  const availableProgramsFor = (progField) => {
+    const pref = PREFERENCES.find(x => x.progField === progField);
+    const dept = formData[pref.deptField];
+    const taken = new Set(
+      PREFERENCES
+        .filter(x => x.progField !== progField)
+        .map(x => choiceKey(formData[x.deptField], formData[x.progField]))
+        .filter(k => !k.endsWith('::'))
+    );
+    return programsFor(dept).filter(t => !taken.has(choiceKey(dept, t)));
+  };
 
 
   // Removes a field's error entirely. Setting it to '' instead would leave the
@@ -615,13 +660,21 @@ export default function Admission() {
     else if (DIGITS_ONLY_FIELDS.includes(name)) {
       value = value.replace(/\D/g, '').slice(0, 11);
     }
+    // Changing a department invalidates the programme chosen under it.
+    const CLEARS = {
+      department:       'program',
+      secondDepartment: 'secondPriority',
+      thirdDepartment:  'thirdPriority',
+    };
+    const cleared = CLEARS[name];
+
     setFormData(prev => ({
       ...prev,
-      [e.target.name]: value,
-      // reset program when department changes
-      ...(e.target.name === 'department' ? { program: '' } : {}),
+      [name]: value,
+      ...(cleared ? { [cleared]: '' } : {}),
     }));
-    clearError(e.target.name);
+    clearError(name);
+    if (cleared) clearError(cleared);
   };
 
   const handlePic = (e) => {
@@ -650,7 +703,8 @@ export default function Admission() {
       Object.entries(formData).forEach(([k, v]) => fd.append(k, v));
       fd.append('qualifications', JSON.stringify(quals));
       if (profilePic) fd.append('profilePicture', profilePic);
-      await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/admissions/apply`, fd);
+      const res = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}/admissions/apply`, fd);
+      setSubmittedApp(res.data || null);
       setSubmitted(true);
       setFormData(emptyForm);
       setQuals(EMPTY_QUALS);
@@ -936,13 +990,40 @@ export default function Admission() {
               <p className="text-gray-500 text-sm max-w-sm mx-auto leading-relaxed">
                 Thank you for applying. We will review your application and get in touch with you shortly via email or phone.
               </p>
-              <button
-                onClick={() => setSubmitted(false)}
-                className="mt-8 px-10 py-3.5 text-white font-bold rounded-xl transition-all text-sm"
-                style={{ background: 'linear-gradient(135deg, #041476, #0a2580)', boxShadow: '0 8px 24px rgba(4,20,118,0.35)' }}
-              >
-                Submit Another Application
-              </button>
+              {submittedApp && (
+                <p className="mt-5 text-xs text-gray-400">
+                  Print your completed form, sign it, and submit it to the admissions office.
+                </p>
+              )}
+
+              <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-center">
+                {submittedApp && (
+                  <button
+                    onClick={() => window.print()}
+                    className="px-8 py-3.5 text-white font-bold rounded-xl transition-all text-sm"
+                    style={{ background: 'linear-gradient(135deg, #041476, #0a2580)', boxShadow: '0 8px 24px rgba(4,20,118,0.35)' }}
+                  >
+                    Print / Download Form
+                  </button>
+                )}
+                <button
+                  onClick={() => { setSubmitted(false); setSubmittedApp(null); }}
+                  className="px-8 py-3.5 font-bold rounded-xl transition-all text-sm border-2"
+                  style={{ borderColor: '#041476', color: '#041476' }}
+                >
+                  Submit Another Application
+                </button>
+              </div>
+
+              {/* Hidden on screen — the print stylesheet reveals only this. */}
+              <ApplicationPrintout
+                app={submittedApp}
+                photoUrl={submittedApp?.profilePicture
+                  ? (submittedApp.profilePicture.startsWith('http')
+                      ? submittedApp.profilePicture
+                      : `${BASE}${submittedApp.profilePicture}`)
+                  : ''}
+              />
             </div>
           ) : batchInfo && batchInfo.open === false ? (
             /* No intake is taking applications. Showing the form here would
@@ -1088,18 +1169,18 @@ export default function Admission() {
                           </label>
                           <select name="program" value={formData.program}
                             onChange={e => { handleChange(e); clearError('program'); }}
-                            disabled={!formData.department || programsLoading}
-                            style={{ border: `1.5px solid ${errors.program ? '#f87171' : '#e2e8f0'}`, borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.05)', opacity: (!formData.department || programsLoading) ? 0.6 : 1 }}
+                            disabled={!formData.department || deptLoading(formData.department)}
+                            style={{ border: `1.5px solid ${errors.program ? '#f87171' : '#e2e8f0'}`, borderRadius: '12px', boxShadow: '0 1px 4px rgba(0,0,0,0.05)', opacity: (!formData.department || deptLoading(formData.department)) ? 0.6 : 1 }}
                             className="w-full px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-white transition-all text-gray-700">
                             {!formData.department
                               ? <option value="">— Select a department first —</option>
-                              : programsLoading
+                              : deptLoading(formData.department)
                               ? <option value="">Loading programs…</option>
-                              : programList.length === 0
+                              : availableProgramsFor('program').length === 0
                               ? <option value="">No programs available for this department</option>
                               : <>
                                   <option value="">— Select Program —</option>
-                                  {programList.map(p => <option key={p} value={p}>{p}</option>)}
+                                  {availableProgramsFor('program').map(p => <option key={p} value={p}>{p}</option>)}
                                 </>
                             }
                           </select>
@@ -1109,36 +1190,63 @@ export default function Admission() {
 
                       {/* Right: Priority Programs */}
                       <div style={{ background: 'linear-gradient(135deg, #fffbf5, #fff7ed)', borderRadius: '14px', padding: '20px', border: '1.5px solid rgba(250,121,2,0.2)' }}>
-                        <div className="flex items-center gap-2 mb-4">
+                        <div className="flex items-center gap-2 mb-2">
                           <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="#FA7902" strokeWidth="2">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
                           </svg>
                           <span className="text-xs font-bold uppercase tracking-wider" style={{ color: '#FA7902' }}>Priority Programs</span>
                           <span className="text-xs text-gray-400 font-normal">(Optional)</span>
                         </div>
-                        <div className="space-y-4">
-                          <div>
-                            <label className="block text-xs font-semibold text-gray-600 mb-1.5">2nd Priority Program</label>
-                            <select name="secondPriority" value={formData.secondPriority} onChange={handleChange}
-                              style={{ border: '1.5px solid rgba(250,121,2,0.25)', borderRadius: '10px' }}
-                              className="w-full px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200 bg-white/80 transition-all text-gray-700">
-                              <option value="">Select 2nd Priority (Optional)</option>
-                              {programList.map(p => (
-                                <option key={p} value={p}>{p}</option>
-                              ))}
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-xs font-semibold text-gray-600 mb-1.5">3rd Priority Program</label>
-                            <select name="thirdPriority" value={formData.thirdPriority} onChange={handleChange}
-                              style={{ border: '1.5px solid rgba(250,121,2,0.25)', borderRadius: '10px' }}
-                              className="w-full px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200 bg-white/80 transition-all text-gray-700">
-                              <option value="">Select 3rd Priority (Optional)</option>
-                              {programList.map(p => (
-                                <option key={p} value={p}>{p}</option>
-                              ))}
-                            </select>
-                          </div>
+                        <p className="text-[11px] text-gray-500 mb-4 leading-relaxed">
+                          Each preference may be in a different department. A program you have
+                          already chosen will not appear again in the lists below.
+                        </p>
+
+                        <div className="space-y-5">
+                          {[
+                            { n: '2nd', deptField: 'secondDepartment', progField: 'secondPriority' },
+                            { n: '3rd', deptField: 'thirdDepartment',  progField: 'thirdPriority'  },
+                          ].map(({ n, deptField, progField }) => {
+                            const dept    = formData[deptField];
+                            const options = availableProgramsFor(progField);
+                            return (
+                              <div key={progField} className="space-y-2">
+                                <p className="text-xs font-bold text-gray-600">{n} Priority</p>
+
+                                <div data-has-error={!!errors[deptField]}>
+                                  <label className="block text-[11px] font-semibold text-gray-500 mb-1">Department</label>
+                                  <select name={deptField} value={dept} onChange={handleChange}
+                                    style={{ border: `1.5px solid ${errors[deptField] ? '#f87171' : 'rgba(250,121,2,0.25)'}`, borderRadius: '10px' }}
+                                    className="w-full px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200 bg-white/80 transition-all text-gray-700">
+                                    <option value="">— Select Department —</option>
+                                    {departmentList.map(d => <option key={d._id} value={d.name}>{d.name}</option>)}
+                                  </select>
+                                  {errors[deptField] && <p className="text-red-500 text-xs mt-1">{errors[deptField]}</p>}
+                                </div>
+
+                                <div data-has-error={!!errors[progField]}>
+                                  <label className="block text-[11px] font-semibold text-gray-500 mb-1">Program</label>
+                                  <select name={progField} value={formData[progField]} onChange={handleChange}
+                                    disabled={!dept || deptLoading(dept)}
+                                    style={{ border: `1.5px solid ${errors[progField] ? '#f87171' : 'rgba(250,121,2,0.25)'}`, borderRadius: '10px', opacity: (!dept || deptLoading(dept)) ? 0.6 : 1 }}
+                                    className="w-full px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-200 bg-white/80 transition-all text-gray-700">
+                                    {!dept
+                                      ? <option value="">— Select a department first —</option>
+                                      : deptLoading(dept)
+                                      ? <option value="">Loading programs…</option>
+                                      : options.length === 0
+                                      ? <option value="">No other programs left in this department</option>
+                                      : <>
+                                          <option value="">— Select Program —</option>
+                                          {options.map(t => <option key={t} value={t}>{t}</option>)}
+                                        </>
+                                    }
+                                  </select>
+                                  {errors[progField] && <p className="text-red-500 text-xs mt-1">{errors[progField]}</p>}
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     </div>

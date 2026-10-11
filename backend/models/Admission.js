@@ -17,8 +17,12 @@ const AdmissionSchema = new mongoose.Schema(
   {
     department:      { type: String, required: true },
     program:         { type: String, required: true },
-    secondPriority:  { type: String },
-    thirdPriority:   { type: String },
+    // Each preference is a department + programme pair, because the second and
+    // third choices may sit in a different department from the first.
+    secondDepartment: { type: String },
+    secondPriority:   { type: String },
+    thirdDepartment:  { type: String },
+    thirdPriority:    { type: String },
     candidateName:   {
       type: String, required: true, trim: true, minlength: 3, maxlength: 60,
       match: [NAME_REGEX, 'candidateName may only contain letters, spaces, dots, and hyphens.'],
