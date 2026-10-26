@@ -253,7 +253,7 @@ export default function TeachersPage() {
   const usedIds  = ids.filter(i => i.isUsed);
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50">
       <Head><title>Portal Teachers — Admin</title></Head>
       <AdminHeader />
 

@@ -134,9 +134,9 @@ export default function SecuritySettings() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-gray-50">
         <AdminHeader />
-        <div className="flex-1 flex items-center justify-center ml-0 lg:ml-56">
+        <div className="flex items-center justify-center ml-0 lg:ml-56 min-h-[70vh]">
           <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
         </div>
       </div>
@@ -144,7 +144,7 @@ export default function SecuritySettings() {
   }
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50">
       <Head><title>Security Settings — Admin</title></Head>
       <AdminHeader />
 

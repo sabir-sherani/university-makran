@@ -365,7 +365,7 @@ export default function StudentsPage() {
   }
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50">
       <Head><title>Portal Students — Admin</title></Head>
       <AdminHeader />
 

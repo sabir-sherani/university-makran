@@ -249,7 +249,7 @@ export default function DepartmentsList() {
         />
       )}
 
-      <div className="ml-0 lg:ml-56 p-8">
+      <div className="ml-0 lg:ml-56 p-4 sm:p-6 lg:p-8">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-8">
           <h2 className="text-3xl font-bold text-primary">Manage Departments</h2>
           <div className="flex items-center flex-wrap gap-2">
@@ -378,7 +378,7 @@ export default function DepartmentsList() {
 function DeptRow({ dept, onDelete, onSuspend, onUnsuspend, isSuspended }) {
   return (
     <div
-      className="border rounded-xl p-4 flex items-center gap-4 transition-colors"
+      className="border rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 transition-colors"
       style={{
         borderColor: isSuspended ? '#fcd34d' : '#e5e7eb',
         background:  isSuspended ? '#fffbeb' : '#fff',
@@ -401,9 +401,9 @@ function DeptRow({ dept, onDelete, onSuspend, onUnsuspend, isSuspended }) {
         </div>
       )}
 
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-0 w-full">
         <div className="flex items-center gap-2 flex-wrap">
-          <h4 className="font-bold" style={{ color: isSuspended ? '#92400e' : '#041476' }}>{dept.name}</h4>
+          <h4 className="font-bold break-words" style={{ color: isSuspended ? '#92400e' : '#041476' }}>{dept.name}</h4>
           {dept.slug && (
             <span className="text-xs text-gray-400 font-mono bg-gray-100 px-2 py-0.5 rounded">
               /{dept.slug}
@@ -420,7 +420,7 @@ function DeptRow({ dept, onDelete, onSuspend, onUnsuspend, isSuspended }) {
         )}
       </div>
 
-      <div className="flex gap-2 shrink-0 flex-wrap justify-end">
+      <div className="flex gap-2 shrink-0 flex-wrap w-full sm:w-auto justify-start sm:justify-end">
         <Link
           href={`/admin/departments/${dept._id}`}
           className="admin-btn text-xs px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded font-medium"

@@ -125,7 +125,7 @@ export default function FacilitiesAdmin() {
   );
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50">
       <Head><title>Manage Facilities & Scholarships — Admin</title></Head>
       <AdminHeader />
 
