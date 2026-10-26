@@ -38,8 +38,6 @@ function buildTabs() {
     { key: 'mission',    label: 'Mission & Vision',       icon: '🎯' },
     { key: 'facilities', label: 'Facilities & Resources', icon: '🏫' },
     { key: 'engagement', label: 'Student Engagement',     icon: '🤝' },
-    { key: 'courses',    label: 'Course Content',         icon: '📚' },
-    { key: 'fee',        label: 'Fee Structure',          icon: '💰' },
     { key: 'programs',   label: 'Degree Programs',        icon: '🎓' },
   ];
 }
