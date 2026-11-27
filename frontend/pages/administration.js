@@ -103,7 +103,7 @@ export default function Administration() {
 
                       {dept.hod?.name && (
                         <p className="text-sm text-gray-500 mb-2">
-                          Head: <span className="font-medium text-gray-700">{dept.hod.name}</span>
+                          {dept.hod.position?.trim() || 'Head'}: <span className="font-medium text-gray-700">{dept.hod.name}</span>
                         </p>
                       )}
 

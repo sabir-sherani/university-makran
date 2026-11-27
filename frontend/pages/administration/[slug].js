@@ -142,6 +142,10 @@ function StaffCard({ member, onReadMore }) {
 
 export default function AdministrationDeptPage({ dept }) {
   const hodPhoto = imgUrl(dept.hod?.image);
+  // Whatever the admin typed in the Position box for this department —
+  // "Dean", "Director", "Registrar". Blank falls back to "Head", so a
+  // department that has not set one reads exactly as it did before.
+  const hodPosition = dept.hod?.position?.trim() || 'Head';
   const [bioModal, setBioModal] = useState(null);
 
   return (
@@ -165,6 +169,9 @@ export default function AdministrationDeptPage({ dept }) {
         </div>
       </section>
 
+      {/* The admin sets this per department in the Position box (Dean, Director,
+          Registrar…). Falls back to "Head" so a department left blank is
+          unchanged. */}
       <div className="bg-gray-50">
         <div className="container py-14 space-y-14">
 
@@ -172,7 +179,7 @@ export default function AdministrationDeptPage({ dept }) {
           {(dept.hod?.name || dept.hod?.image) && (
             <section>
               <h2 className="text-xl font-bold mb-6 pb-2 border-b-2" style={{ color: '#041476', borderColor: 'rgba(4,20,118,0.2)' }}>
-                Head of {dept.name}
+                {hodPosition} of {dept.name}
               </h2>
               <div className="bg-white rounded-2xl shadow-sm p-8 flex flex-col md:flex-row gap-8">
 
@@ -202,7 +209,7 @@ export default function AdministrationDeptPage({ dept }) {
                     <h3 className="text-xl font-bold text-gray-900">{dept.hod.name}</h3>
                   )}
                   <p className="text-sm font-semibold mt-0.5" style={{ color: '#041476' }}>
-                    Head of {dept.name}
+                    {hodPosition} of {dept.name}
                   </p>
                   {dept.hod?.specialization && (
                     <p className="text-sm text-gray-500 mt-1">{dept.hod.specialization}</p>
